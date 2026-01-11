@@ -1,7 +1,6 @@
 
 import React, { useMemo } from 'react';
-// Fix: Added missing TrendingUp and TrendingDown imports from lucide-react
-import { Download, FileText, Printer, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { Download, FileText, Printer, TrendingUp, TrendingDown, CheckCircle2, Table as TableIcon } from 'lucide-react';
 import { Billing, Expense } from '../types';
 
 interface ReportsProps {
@@ -11,8 +10,8 @@ interface ReportsProps {
 
 export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
   const summary = useMemo(() => {
-    const totalB = billings.reduce((s, b) => s + b.value, 0);
-    const totalE = expenses.reduce((s, e) => s + e.total, 0);
+    const totalB = billings.reduce((s, b) => s + (Number(b.value) || 0), 0);
+    const totalE = expenses.reduce((s, e) => s + (Number(e.total) || 0), 0);
     return {
       totalB,
       totalE,
@@ -22,107 +21,189 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
     };
   }, [billings, expenses]);
 
-  const handleExport = () => {
-    alert('Funcionalidade de exportação PDF/Excel estará disponível em breve!');
+  const handleExportCSV = () => {
+    let csvContent = "\uFEFF"; // BOM para UTF-8 Excel
+    
+    csvContent += "LAVA RAPIDO PRO - RELATÓRIO FINANCEIRO CONSOLIDADO\n";
+    csvContent += `Gerado em:;${new Date().toLocaleString('pt-BR')}\n`;
+    csvContent += `Responsável:;João Layón\n\n`;
+
+    csvContent += "--- 1. ENTRADAS (FATURAMENTO) ---\n";
+    csvContent += "Data;Veículo;Placa;Porte;Valor Bruto (R$)\n";
+    
+    billings.forEach(b => {
+      const formattedDate = new Date(b.date).toLocaleDateString('pt-BR');
+      const formattedValue = b.value.toFixed(2).replace('.', ',');
+      csvContent += `${formattedDate};${b.car};${b.plate.toUpperCase()};${b.size};${formattedValue}\n`;
+    });
+
+    csvContent += `TOTAL ENTRADAS:;;;;R$ ${summary.totalB.toFixed(2).replace('.', ',')}\n\n`;
+
+    csvContent += "--- 2. SAÍDAS (DESPESAS OPERACIONAIS) ---\n";
+    csvContent += "Data;Freelancer;Lanche;Outros;Total Gasto (R$)\n";
+    
+    expenses.forEach(e => {
+      const formattedDate = new Date(e.date).toLocaleDateString('pt-BR');
+      const fFree = e.freelancer.toFixed(2).replace('.', ',');
+      const fSnack = e.snacks.toFixed(2).replace('.', ',');
+      const fOther = e.others.toFixed(2).replace('.', ',');
+      const fTotal = e.total.toFixed(2).replace('.', ',');
+      csvContent += `${formattedDate};${fFree};${fSnack};${fOther};${fTotal}\n`;
+    });
+
+    csvContent += `TOTAL SAÍDAS:;;;;R$ ${summary.totalE.toFixed(2).replace('.', ',')}\n\n`;
+
+    csvContent += "--- 3. BALANÇO E PERFORMANCE ---\n";
+    csvContent += `LUCRO LÍQUIDO:;R$ ${summary.profit.toFixed(2).replace('.', ',')}\n`;
+    csvContent += `MARGEM LÍQUIDA:;${summary.totalB ? ((summary.profit / summary.totalB) * 100).toFixed(2).replace('.', ',') : '0'}%\n`;
+    csvContent += `TICKET MÉDIO:;R$ ${summary.ticketMedio.toFixed(2).replace('.', ',')}\n`;
+    csvContent += `TOTAL DE SERVIÇOS:;${summary.totalServices}\n\n`;
+    
+    csvContent += "Sistema desenvolvido por João Layón";
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Relatorio_LavaRapido_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
+  const sortedHistory = useMemo(() => {
+    const combined = [
+      ...billings.map(b => ({ ...b, isExpense: false, sortDate: new Date(b.date).getTime() })),
+      ...expenses.map(e => ({ ...e, isExpense: true, sortDate: new Date(e.date).getTime() }))
+    ];
+    return combined.sort((a, b) => b.sortDate - a.sortDate);
+  }, [billings, expenses]);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print-hidden">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Relatórios Gerais</h2>
-          <p className="text-slate-500">Documentação completa das atividades financeiras.</p>
+          <p className="text-slate-500">Gestão documental e exportação de dados financeiros.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <button 
-            onClick={handleExport}
-            className="flex items-center gap-2 bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-medium hover:bg-slate-200 transition-all"
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 group"
           >
-            <Download size={18} /> Exportar CSV
+            <TableIcon size={18} className="group-hover:rotate-12 transition-transform" /> 
+            Exportar Excel
           </button>
           <button 
             onClick={() => window.print()}
-            className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl font-medium hover:bg-slate-800 transition-all shadow-md"
+            className="flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md"
           >
-            <Printer size={18} /> Imprimir Relatório
+            <Printer size={18} /> Imprimir PDF
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1">Serviços</p>
-          <p className="text-2xl font-bold text-slate-900">{summary.totalServices}</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-blue-500">
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Volume de Serviços</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-black text-slate-900">{summary.totalServices}</p>
+            <CheckCircle2 size={16} className="text-emerald-500" />
+          </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1">Ticket Médio</p>
-          <p className="text-2xl font-bold text-slate-900">R$ {summary.ticketMedio.toFixed(2)}</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-indigo-500">
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Ticket Médio</p>
+          <p className="text-2xl font-black text-indigo-600">R$ {summary.ticketMedio.toFixed(2)}</p>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1">Custo Médio</p>
-          <p className="text-2xl font-bold text-rose-500">R$ {(summary.totalE / (summary.totalServices || 1)).toFixed(2)}</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Custo Operacional</p>
+          <p className="text-2xl font-black text-rose-500">R$ {summary.totalE.toFixed(2)}</p>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1">Margem Bruta</p>
-          <p className="text-2xl font-bold text-emerald-600">{summary.totalB ? ((summary.profit / summary.totalB) * 100).toFixed(1) : 0}%</p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Margem Líquida</p>
+          <p className={`text-2xl font-black ${summary.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {summary.totalB ? ((summary.profit / summary.totalB) * 100).toFixed(1) : 0}%
+          </p>
         </div>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <FileText size={20} className="text-blue-500" />
-            Extrato Consolidado
+            Extrato de Movimentações
           </h3>
-          <span className="text-sm text-slate-400 italic">Ordenado por data decrescente</span>
+          <div className="flex items-center gap-2 print-hidden">
+             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+             <span className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Atualizado agora</span>
+          </div>
         </div>
         
-        <div className="divide-y divide-slate-50">
-          {[...billings, ...expenses.map(e => ({ ...e, isExpense: true }))]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .map((item: any, idx) => (
-              <div key={idx} className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+        <div className="max-h-[500px] overflow-y-auto divide-y divide-slate-50 scrollbar-thin scrollbar-thumb-slate-200">
+          {sortedHistory.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 italic">Nenhuma movimentação para exibir.</div>
+          ) : (
+            sortedHistory.map((item: any, idx) => (
+              <div key={item.id || idx} className="p-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors group">
                 <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.isExpense ? 'bg-rose-50 text-rose-500' : 'bg-blue-50 text-blue-500'}`}>
-                    {item.isExpense ? <TrendingUp size={18} className="rotate-180" /> : <TrendingDown size={18} className="rotate-180" />}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${item.isExpense ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                    {item.isExpense ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800">
-                      {item.isExpense ? 'Despesa Operacional' : `Lavação: ${item.car}`}
+                    <p className="font-bold text-slate-800 leading-none mb-1">
+                      {item.isExpense ? 'Débito: Despesas Gerais' : `Crédito: ${item.car}`}
                     </p>
-                    <p className="text-xs text-slate-500">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-slate-400">{new Date(item.date).toLocaleDateString('pt-BR')}</span>
+                      {!item.isExpense && <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{item.plate}</span>}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={`font-black ${item.isExpense ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  <p className={`font-black text-lg ${item.isExpense ? 'text-rose-600' : 'text-emerald-600'}`}>
                     {item.isExpense ? '-' : '+'} R$ {(item.total || item.value).toFixed(2)}
                   </p>
-                  <p className="text-[10px] text-slate-400 uppercase font-bold">{item.isExpense ? 'Saída' : 'Entrada'}</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">{item.isExpense ? 'Saída' : 'Entrada'}</p>
                 </div>
               </div>
-            ))}
+            ))
+          )}
         </div>
 
-        <div className="p-8 bg-slate-900 text-white">
-          <div className="max-w-md ml-auto space-y-3">
-            <div className="flex justify-between text-slate-400">
-              <span>Subtotal Entradas:</span>
-              <span className="text-white">R$ {summary.totalB.toFixed(2)}</span>
+        <div className="p-8 bg-slate-900 text-white relative overflow-hidden print:bg-white print:text-black print:border-t-2 print:border-slate-900">
+          <div className="absolute top-0 right-0 p-8 opacity-5 print:hidden">
+            <TrendingUp size={160} />
+          </div>
+          <div className="max-w-md ml-auto space-y-4 relative z-10">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Faturado</p>
+                <p className="text-xl font-bold text-emerald-400 print:text-emerald-600">R$ {summary.totalB.toFixed(2)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Total Gasto</p>
+                <p className="text-xl font-bold text-rose-400 print:text-rose-600">R$ {summary.totalE.toFixed(2)}</p>
+              </div>
             </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Subtotal Saídas:</span>
-              <span className="text-white">R$ {summary.totalE.toFixed(2)}</span>
-            </div>
-            <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
-              <span className="text-lg font-bold">Saldo do Período:</span>
-              <span className="text-2xl font-black text-emerald-400">R$ {summary.profit.toFixed(2)}</span>
+            
+            <div className="pt-4 border-t border-slate-800 flex justify-between items-center print:border-slate-200">
+              <div>
+                <p className="text-xs uppercase font-black text-slate-500 tracking-tighter mb-1">Saldo Líquido Disponível</p>
+                <span className="text-4xl font-black text-white print:text-black">R$ {summary.profit.toFixed(2)}</span>
+              </div>
+              <div className={`px-4 py-2 rounded-xl text-xs font-black tracking-widest ${summary.profit >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                {summary.profit >= 0 ? 'LUCRO POSITIVO' : 'SALDO NEGATIVO'}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex justify-center pt-4">
-        <p className="text-sm text-slate-400">Sistema desenvolvido por <span className="text-slate-600 font-bold underline decoration-blue-500 decoration-2">João Layón</span></p>
+      <div className="flex flex-col items-center justify-center pt-8 pb-4 opacity-40 print:hidden">
+        <div className="h-px w-32 bg-gradient-to-r from-transparent via-slate-400 to-transparent mb-4"></div>
+        <p className="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em]">
+          Plataforma de Gestão — <span className="text-blue-600">João Layón</span>
+        </p>
       </div>
     </div>
   );
