@@ -36,7 +36,6 @@
         50% { opacity: .5; }
       }
       
-      /* Ocultar elementos na impressão */
       @media print {
         aside, footer, .print-hidden, button {
           display: none !important;
@@ -48,24 +47,23 @@
       }
     </style>
 
-    <!-- Shim para evitar erro de 'process is not defined' -->
     <script>
       window.process = { env: { NODE_ENV: 'production' } };
     </script>
 
     <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react/": "https://esm.sh/react@18.2.0/",
-        "react-dom": "https://esm.sh/react-dom@18.2.0",
-        "react-dom/": "https://esm.sh/react-dom@18.2.0/",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.263.1?external=react",
-        "recharts": "https://esm.sh/recharts@2.8.0?external=react,react-dom"
-      }
-    }
-    </script>
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
+    "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom"
+  }
+}
+</script>
   </head>
   <body>
     <div id="root"></div>

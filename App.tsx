@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { BillingForm } from './components/BillingForm';
@@ -8,13 +8,12 @@ import { Reports } from './components/Reports';
 import { getBillings, getExpenses } from './lib/storage';
 import { Billing, Expense } from './types';
 
-const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [billings, setBillings] = useState<Billing[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = React.useState('dashboard');
+  const [billings, setBillings] = React.useState<Billing[]>([]);
+  const [expenses, setExpenses] = React.useState<Expense[]>([]);
 
-  // Update lists whenever tab changes to ensure fresh data from localStorage
-  useEffect(() => {
+  React.useEffect(() => {
     setBillings(getBillings());
     setExpenses(getExpenses());
   }, [activeTab]);
@@ -40,5 +39,3 @@ const App: React.FC = () => {
     </Layout>
   );
 };
-
-export default App;
