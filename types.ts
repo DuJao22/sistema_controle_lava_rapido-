@@ -19,6 +19,7 @@ export interface Billing {
   paymentMethod: PaymentMethod;
   value: number;
   date: string;
+  time: string; // Adicionado horário
 }
 
 export interface Expense {
