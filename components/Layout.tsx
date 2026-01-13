@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, RefreshCw, Globe } from 'lucide-react';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, RefreshCw, Globe, Wifi } from 'lucide-react';
 import { changePassword, initDB } from '../lib/storage';
 
 interface LayoutProps {
@@ -22,16 +22,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     localStorage.removeItem('lavarapido_user_id');
     localStorage.removeItem('lavarapido_user_name');
     localStorage.removeItem('lavarapido_user_role');
+    localStorage.removeItem('lavarapido_cloud_obj_id'); // Limpa para forçar busca na rede ao trocar de usuário
     window.location.reload();
   };
 
   const handleGlobalSync = async () => {
     setIsGlobalSyncing(true);
+    // Força o download da versão mais recente da rede
     const success = await initDB(true); 
     if (success) {
       window.location.reload(); 
     } else {
-      alert("Falha ao sincronizar com o servidor global.");
+      alert("Erro ao conectar à rede. Verifique sua internet.");
     }
     setIsGlobalSyncing(false);
   };
@@ -80,7 +82,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight leading-none uppercase italic">Lava Rápido</h1>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Global Pro</span>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+              <Wifi size={10} /> Rede Master
+            </span>
           </div>
         </div>
         
@@ -107,7 +111,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             className="w-full flex items-center justify-center gap-3 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-emerald-500/20 transition-all active:scale-95 group"
           >
             <RefreshCw size={16} className={isGlobalSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'} />
-            Sincronizar Dados
+            Sincronizar Agora
           </button>
 
           <div className="bg-slate-800/40 p-4 rounded-3xl border border-white/5">
