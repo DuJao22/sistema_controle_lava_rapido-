@@ -10,11 +10,13 @@ declare global {
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
-// IDENTIFICADOR ÚNICO E ROBUSTO PARA SUA REDE
-// Alterado para evitar conflitos com outros usuários do serviço de teste
-const CLOUD_ID = 'LAVA_RAPIDO_PRO_SYNC_STATION_FINAL_V9'; 
+/**
+ * ESTE É O SEU CANAL DE REDE EXCLUSIVO.
+ * Todos os dispositivos com este ID verão os mesmos dados.
+ */
+const CLOUD_ID = 'LAVA_RAPIDO_PRO_SYNC_STATION_GLOBAL_V11'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY = 'lavarapido_db_v9';
+const LOCAL_STORAGE_KEY = 'lavarapido_db_v11';
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -56,10 +58,10 @@ export const syncToCloud = async () => {
     const base64Data = encodeBase64(binaryArray);
     const now = Date.now();
     
-    // Salva localmente primeiro (segurança)
+    // 1. Salva localmente (segurança caso a internet caia no meio do envio)
     saveToLocalBackup(now);
 
-    // Envia para a nuvem global
+    // 2. Envia para a Nuvem Global (Obrigatório para o João ver)
     const response = await fetch(CLOUD_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -71,26 +73,25 @@ export const syncToCloud = async () => {
     
     if (response.ok) {
       lastLocalUpdateTimestamp = now;
-      console.log("Sincronização global concluída com sucesso!");
       return true;
     }
   } catch (e) {
-    console.error("Erro crítico na sincronização global:", e);
+    console.error("Erro ao sincronizar com a nuvem global:", e);
   }
   return false;
 };
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
   try {
-    // Busca TODOS os objetos e filtra manualmente (mais garantido para este API de teste)
-    const response = await fetch(`${CLOUD_API_URL}?t=${Date.now()}`, {
+    // Busca na API todos os objetos e filtra pelo seu canal exclusivo
+    const response = await fetch(`${CLOUD_API_URL}?nocache=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
     });
     
     const results = await response.json();
     if (Array.isArray(results)) {
-      // Filtra pela sua rede e pega o registro com timestamp mais alto (mais recente)
+      // Pega a versão mais nova enviada por qualquer dispositivo (Master, João ou Bianca)
       const myEntries = results
         .filter(r => r.name === CLOUD_ID && r.data?.sqlite && r.data?.timestamp)
         .sort((a, b) => b.data.timestamp - a.data.timestamp);
@@ -104,49 +105,46 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     }
   } catch (e) {
-    console.error("Falha ao buscar dados na nuvem:", e);
+    console.error("Erro ao carregar dados globais:", e);
   }
   return null;
 };
 
-export const initDB = async (forceCloud = false) => {
+export const initDB = async (forceCloud = true) => {
   try {
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
-    // PRIORIDADE MÁXIMA: NUVEM
+    // CLOUD-FIRST: Sempre tenta carregar da nuvem primeiro para garantir sincronia global
     const cloudData = await loadFromCloud();
     const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
 
-    // Se houver dados na nuvem e eles forem novos (ou se forçado), usa a nuvem
+    // Se a nuvem tiver dados, ou se for forçado, usa a nuvem (que é o dado compartilhado)
     if (cloudData && (forceCloud || cloudData.ts >= localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
       saveToLocalBackup(cloudData.ts);
-      console.log("Banco de dados inicializado via NUVEM GLOBAL.");
+      console.log("Sincronização Global: Dados carregados da nuvem.");
     } else {
-      // Tenta backup local se a nuvem falhar
+      // Fallback local apenas se a nuvem estiver inacessível
       const localBackupBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (localBackupBase64) {
         const bytes = decodeBase64(localBackupBase64);
         db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
         lastLocalUpdateTimestamp = localTS;
-        console.log("Banco de dados inicializado via BACKUP LOCAL.");
       } else {
         db = new initSqlJs.Database();
-        console.log("Novo banco de dados criado.");
       }
     }
 
-    // Garante estrutura
+    // Estrutura do Banco
     db.run(`
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT);
       CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT);
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT);
     `);
 
-    // Usuários padrão (Master, João, Bianca)
     const defaults = [
       ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
       ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
@@ -158,14 +156,13 @@ export const initDB = async (forceCloud = false) => {
     
     return true;
   } catch (e) {
-    console.error("Erro fatal ao iniciar banco de dados:", e);
     return false;
   }
 };
 
 export const checkForUpdates = async () => {
   const cloud = await loadFromCloud();
-  // Se a nuvem tem um dado com timestamp MAIOR que o que temos agora, atualiza
+  // Se a nuvem tem algo mais novo que o dispositivo atual, atualiza IMEDIATAMENTE
   if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
@@ -177,6 +174,8 @@ export const checkForUpdates = async () => {
   }
   return false;
 };
+
+// --- Funções de Operação (Sempre chamam syncToCloud após salvar) ---
 
 export const login = (username: string, pass: string): User | null => {
   if (!db) return null;

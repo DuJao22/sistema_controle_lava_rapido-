@@ -9,7 +9,7 @@ import { UserManagement } from './components/UserManagement';
 import { Login } from './components/Login';
 import { initDB, getBillings, getExpenses, checkForUpdates } from './lib/storage';
 import { Billing, Expense } from './types';
-import { Loader2, RefreshCw, CloudOff, Globe, Wifi } from 'lucide-react';
+import { Loader2, RefreshCw, CloudOff, Globe, Wifi, CheckCircle } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [isLogged, setIsLogged] = React.useState(!!localStorage.getItem('lavarapido_user_id'));
@@ -35,21 +35,20 @@ export const App: React.FC = () => {
       if (hasUpdates) {
         setIsSyncing(true);
         refreshLocalData();
-        console.log("Dados globais atualizados automaticamente!");
+        console.log("Sincronização Global: Dados novos recebidos de outro dispositivo!");
         setTimeout(() => setIsSyncing(false), 3000);
       }
       setLastSyncStatus('online');
     } catch (e) {
-      console.error("Falha na sincronização periódica:", e);
+      console.error("Erro na verificação global:", e);
       setLastSyncStatus('error');
     }
   };
 
-  // Inicialização Inicial Forçando Nuvem
+  // Inicialização obrigatória via Nuvem
   React.useEffect(() => {
     if (isLogged) {
       const setup = async () => {
-        console.log("Iniciando conexão com a nuvem global...");
         const ready = await initDB(true);
         setIsDbReady(ready);
         if (ready) refreshLocalData();
@@ -58,17 +57,15 @@ export const App: React.FC = () => {
     }
   }, [isLogged]);
 
-  // Monitoramento Ativo (Verificação a cada 5 segundos)
+  // Monitoramento constante para o computador do João
   React.useEffect(() => {
     if (!isDbReady || !isLogged) return;
 
+    // Verifica a nuvem a cada 5 segundos
     const interval = setInterval(performSyncCheck, 5000);
 
-    const handleFocus = () => {
-      console.log("Janela focada. Verificando novidades na nuvem...");
-      performSyncCheck();
-    };
-
+    // Verifica a nuvem sempre que o João clicar na aba ou voltar para o sistema
+    const handleFocus = () => performSyncCheck();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', performSyncCheck);
 
@@ -91,8 +88,8 @@ export const App: React.FC = () => {
           <Globe className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white w-8 h-8 opacity-50" />
         </div>
         <div className="text-center">
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Conectando à Rede Global</h2>
-          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse">Sincronizando dispositivos Master, João e Bianca</p>
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Conectando à Rede Master</h2>
+          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Buscando dados globais atualizados...</p>
         </div>
       </div>
     );
@@ -111,12 +108,12 @@ export const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {/* Barra de Status Global */}
+      {/* Indicador de Nuvem Global */}
       <div className="fixed top-4 right-4 z-[200] flex flex-col items-end gap-2 pointer-events-none">
         {isSyncing && (
           <div className="bg-emerald-600 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-right duration-500 border border-emerald-400">
-             <RefreshCw size={12} className="text-white animate-spin" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Nuvem Atualizada!</span>
+             <CheckCircle size={14} className="text-white" />
+             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Dados Sincronizados!</span>
           </div>
         )}
         
@@ -128,8 +125,8 @@ export const App: React.FC = () => {
              {lastSyncStatus === 'online' ? <Wifi size={14} /> : 
               lastSyncStatus === 'syncing' ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />}
              <span className="text-[8px] font-black uppercase tracking-tighter">
-               {lastSyncStatus === 'online' ? 'Rede Ativa' : 
-                lastSyncStatus === 'syncing' ? 'Sincronizando...' : 'Offline'}
+               {lastSyncStatus === 'online' ? 'Global Online' : 
+                lastSyncStatus === 'syncing' ? 'Baixando...' : 'Sem Rede'}
              </span>
           </div>
         </div>
