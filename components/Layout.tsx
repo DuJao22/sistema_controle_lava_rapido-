@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Cloud, CloudOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Cloud, ShieldCheck, Menu, X } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,79 +9,108 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
-  const [isSynced, setIsSynced] = React.useState(true);
+  const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('lavarapido_last_sync'));
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastSync(localStorage.getItem('lavarapido_last_sync'));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'billing', label: 'Faturamento', icon: Receipt },
-    { id: 'expenses', label: 'Despesas', icon: TrendingDown },
+    { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+    { id: 'billing', label: 'Vendas', icon: Receipt },
+    { id: 'expenses', label: 'Gastos', icon: TrendingDown },
     { id: 'reports', label: 'Relatórios', icon: ClipboardList },
   ];
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900 text-white p-6 md:fixed h-auto md:h-full z-20 flex flex-col">
+    <div className="flex min-h-screen bg-slate-50 font-sans">
+      {/* Sidebar Desktop */}
+      <aside className="hidden lg:flex w-72 bg-slate-900 text-white p-6 fixed h-full z-30 flex-col shadow-2xl">
         <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="bg-blue-500 p-2 rounded-lg">
-            <Car size={24} className="text-white" />
+          <div className="bg-gradient-to-br from-blue-400 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20">
+            <Car size={26} className="text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Lava Rápido Pro</h1>
+          <div>
+            <h1 className="text-xl font-black tracking-tight leading-none uppercase italic">Lava Rápido</h1>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Cloud Ativa</span>
+          </div>
         </div>
         
-        <nav className="space-y-2 flex-1">
+        <nav className="space-y-1.5 flex-1">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all duration-300 group ${
                 activeTab === item.id 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 scale-[1.02]' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <item.icon size={20} />
-              <span className="font-medium">{item.label}</span>
+              <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} />
+              <span className="font-bold text-sm tracking-wide">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
-          <div className="flex items-center gap-3 px-2 py-3 bg-slate-800/50 rounded-xl">
-            {isSynced ? (
-              <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                <Cloud size={18} />
-              </div>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
-                <CloudOff size={18} />
-              </div>
-            )}
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 leading-none mb-1">Status de Rede</p>
-              <p className="text-xs font-bold text-slate-200">Banco de Dados Global</p>
+        <div className="mt-auto space-y-4 pt-6 border-t border-slate-800/50">
+          <div className="bg-slate-800/40 p-5 rounded-3xl border border-white/5 relative overflow-hidden">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizado</span>
             </div>
-          </div>
-
-          <div className="px-2 text-[10px] text-slate-500">
-            <p>SISTEMA V1.2 — CLOUD</p>
-            <p className="mt-1">Desenvolvido por</p>
-            <p className="font-bold text-slate-300">João Layón</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase">Último Backup</p>
+            <p className="text-xs text-slate-200 font-black">
+              {lastSync ? new Date(lastSync).toLocaleTimeString('pt-BR') : 'Conectando...'}
+            </p>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pb-24 md:pb-8">
+      <main className="flex-1 lg:ml-72 p-4 sm:p-6 lg:p-10 pb-24 lg:pb-10 w-full overflow-x-hidden">
+        {/* Header Mobile */}
+        <div className="lg:hidden flex items-center justify-between mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <Car size={18} className="text-white" />
+            </div>
+            <h1 className="font-black text-slate-800 uppercase text-sm tracking-tighter">Lava Rápido Pro</h1>
+          </div>
+          <div className="flex items-center gap-2">
+             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+             <span className="text-[9px] font-black text-slate-400 uppercase">Cloud Online</span>
+          </div>
+        </div>
+
         <div className="max-w-7xl mx-auto">
           {children}
         </div>
       </main>
 
-      {/* Footer / Mobile Credits */}
-      <footer className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-4 text-center text-xs text-slate-600 z-30">
-        Plataforma Compartilhada — <span className="font-bold">João Layón</span>
-      </footer>
+      {/* Bottom Nav Mobile */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-2 py-2 flex justify-around items-center z-40 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)]">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all min-w-[70px] ${
+              activeTab === item.id ? 'text-blue-600' : 'text-slate-400'
+            }`}
+          >
+            <div className={`p-1.5 rounded-lg transition-colors ${activeTab === item.id ? 'bg-blue-50' : ''}`}>
+              <item.icon size={22} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+            </div>
+            <span className={`text-[10px] font-bold ${activeTab === item.id ? 'opacity-100' : 'opacity-60'}`}>
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 };
