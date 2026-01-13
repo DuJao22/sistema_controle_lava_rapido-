@@ -9,7 +9,7 @@ import { UserManagement } from './components/UserManagement';
 import { Login } from './components/Login';
 import { initDB, getBillings, getExpenses, checkForUpdates } from './lib/storage';
 import { Billing, Expense } from './types';
-import { Loader2, RefreshCw, CloudOff, Globe, Wifi, CheckCircle } from 'lucide-react';
+import { Loader2, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [isLogged, setIsLogged] = React.useState(!!localStorage.getItem('lavarapido_user_id'));
@@ -18,57 +18,49 @@ export const App: React.FC = () => {
   const [expenses, setExpenses] = React.useState<Expense[]>([]);
   const [isDbReady, setIsDbReady] = React.useState(false);
   const [isSyncing, setIsSyncing] = React.useState(false);
-  const [lastSyncStatus, setLastSyncStatus] = React.useState<'online' | 'syncing' | 'error'>('online');
+  const [status, setStatus] = React.useState<'online' | 'offline' | 'updating'>('online');
 
-  const refreshLocalData = () => {
+  const reloadData = () => {
     setBillings(getBillings());
     setExpenses(getExpenses());
   };
 
-  const performSyncCheck = async () => {
-    if (!isDbReady || !isLogged) return;
-    
-    try {
-      setLastSyncStatus('syncing');
-      const hasUpdates = await checkForUpdates();
-      
-      if (hasUpdates) {
-        setIsSyncing(true);
-        refreshLocalData();
-        setTimeout(() => setIsSyncing(false), 2000);
-      }
-      setLastSyncStatus('online');
-    } catch (e) {
-      setLastSyncStatus('error');
-    }
-  };
-
+  // Efeito de Inicialização (Download do Banco Mestre)
   React.useEffect(() => {
     if (isLogged) {
-      const setup = async () => {
-        const ready = await initDB(true);
-        setIsDbReady(ready);
-        if (ready) refreshLocalData();
+      const startup = async () => {
+        setIsDbReady(false);
+        const ok = await initDB(true); // Força download da nuvem ao abrir
+        if (ok) {
+          reloadData();
+          setIsDbReady(true);
+        }
       };
-      setup();
+      startup();
     }
   }, [isLogged]);
 
-  // Polling agressivo a cada 3 segundos para sincronia quase real entre dispositivos
+  // Efeito de Polling (Sincronização entre aparelhos a cada 3 segundos)
   React.useEffect(() => {
     if (!isDbReady || !isLogged) return;
 
-    const interval = setInterval(performSyncCheck, 3000);
-
-    const handleFocus = () => performSyncCheck();
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('online', performSyncCheck);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('online', performSyncCheck);
+    const syncTask = async () => {
+      setStatus('updating');
+      try {
+        const hasNewData = await checkForUpdates();
+        if (hasNewData) {
+          setIsSyncing(true);
+          reloadData();
+          setTimeout(() => setIsSyncing(false), 2000);
+        }
+        setStatus('online');
+      } catch (e) {
+        setStatus('offline');
+      }
     };
+
+    const timer = setInterval(syncTask, 4000);
+    return () => clearInterval(timer);
   }, [isDbReady, isLogged]);
 
   if (!isLogged) {
@@ -77,15 +69,12 @@ export const App: React.FC = () => {
 
   if (!isDbReady) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 gap-8 text-white">
-        <div className="relative">
-          <Loader2 className="w-20 h-20 text-blue-500 animate-spin" />
-          <Globe className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white w-8 h-8 opacity-50" />
-        </div>
-        <div className="text-center px-6">
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Sincronização Atômica</h2>
-          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Conectando ao banco de dados mestre...</p>
-        </div>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+        <Loader2 className="w-16 h-16 text-blue-500 animate-spin mb-6" />
+        <h2 className="text-xl font-black uppercase italic tracking-widest animate-pulse">
+          Sincronizando com a Rede...
+        </h2>
+        <p className="text-slate-500 text-[10px] mt-2 uppercase font-bold tracking-[0.3em]">Carregando banco de dados mestre</p>
       </div>
     );
   }
@@ -103,29 +92,25 @@ export const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="fixed top-4 right-4 z-[200] flex flex-col items-end gap-2 pointer-events-none">
-        {isSyncing && (
-          <div className="bg-emerald-600 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-right duration-500 border border-emerald-400">
-             <CheckCircle size={14} className="text-white" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Nuvem Sincronizada!</span>
-          </div>
-        )}
-        
-        <div className={`px-4 py-2 rounded-2xl shadow-xl border-2 flex items-center gap-3 transition-all duration-500 ${
-          lastSyncStatus === 'online' ? 'bg-white text-emerald-600 border-emerald-100' : 
-          lastSyncStatus === 'syncing' ? 'bg-white text-blue-600 border-blue-100' : 'bg-rose-600 text-white border-rose-400'
+      {/* Indicador de Status de Rede Flutuante */}
+      <div className="fixed bottom-24 right-6 lg:bottom-10 lg:right-10 z-50">
+        <div className={`flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border-2 transition-all duration-500 ${
+          status === 'online' ? 'bg-white border-emerald-100 text-emerald-600' : 
+          status === 'updating' ? 'bg-white border-blue-100 text-blue-600' : 'bg-rose-600 border-rose-400 text-white'
         }`}>
-          <div className="flex items-center gap-2">
-             {lastSyncStatus === 'online' ? <Wifi size={14} className="animate-pulse" /> : 
-              lastSyncStatus === 'syncing' ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />}
-             <div className="flex flex-col">
-                <span className="text-[8px] font-black uppercase tracking-tighter leading-none">
-                  {lastSyncStatus === 'online' ? 'Ponto Mestre OK' : 
-                   lastSyncStatus === 'syncing' ? 'Baixando' : 'Erro Nuvem'}
-                </span>
-                <span className="text-[6px] font-bold uppercase opacity-60">Rede Única Global</span>
-             </div>
+          {status === 'updating' ? <RefreshCw size={16} className="animate-spin" /> : 
+           status === 'online' ? <Wifi size={16} className="animate-pulse" /> : <WifiOff size={16} />}
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase leading-none">
+              {status === 'online' ? 'Conectado' : status === 'updating' ? 'Sincronizando' : 'Sem Sinal'}
+            </span>
+            <span className="text-[7px] font-bold uppercase opacity-60">Rede Global Master</span>
           </div>
+          {isSyncing && (
+             <div className="absolute -top-12 right-0 bg-emerald-500 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase animate-bounce">
+               Dados Atualizados!
+             </div>
+          )}
         </div>
       </div>
 

@@ -16,13 +16,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    
     setLoading(true);
     setError('');
 
     try {
+      // Força a conexão com a nuvem antes de validar o usuário
       const ready = await initDB(true);
       if (!ready) {
-        setError('Erro ao conectar ao servidor global. Verifique sua conexão.');
+        setError('Não foi possível conectar ao servidor. Verifique sua internet.');
         setLoading(false);
         return;
       }
@@ -38,28 +41,28 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         setError('Usuário ou senha incorretos.');
       }
     } catch (err) {
-      setError('Erro ao processar login.');
+      setError('Erro ao processar login na rede.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 sm:p-6 text-slate-900">
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 text-slate-900">
       <div className="w-full max-w-md space-y-8 animate-in fade-in zoom-in duration-500">
         <div className="text-center space-y-4">
-          <div className="inline-flex bg-blue-600 p-4 rounded-3xl shadow-xl shadow-blue-500/20 mb-2">
-            <Car size={40} className="text-white" />
+          <div className="inline-flex bg-blue-600 p-5 rounded-[2rem] shadow-2xl shadow-blue-500/20 mb-2">
+            <Car size={48} className="text-white" />
           </div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-            <Globe size={14} className="text-blue-500" /> Sincronização em Tempo Real
+          <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
+          <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-2">
+            <Globe size={14} /> Sistema de Nuvem Ativa
           </p>
         </div>
 
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl space-y-8 relative overflow-hidden">
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl space-y-8 relative overflow-hidden">
           {error && (
-            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-shake">
+            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-bounce">
               <AlertCircle size={18} />
               {error}
             </div>
@@ -67,57 +70,51 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <UserIcon size={12} className="text-blue-600" /> Usuário
-                </label>
+              <div className="relative">
+                <UserIcon className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
                   required
                   type="text"
-                  placeholder="Seu usuário"
+                  placeholder="Usuário"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
+                  className="w-full pl-14 pr-6 py-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
                 />
               </div>
 
-              <div>
-                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <Lock size={12} className="text-blue-600" /> Senha
-                </label>
-                <div className="relative">
-                  <input
-                    required
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
-                  />
-                  <button 
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-2"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
+              <div className="relative">
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input
+                  required
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Senha"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-14 pr-14 py-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 p-2"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
             <button
               disabled={loading}
               type="submit"
-              className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs tracking-[0.2em] hover:bg-slate-800 shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
+              className="w-full bg-slate-900 text-white py-6 rounded-2xl font-black text-xs tracking-[0.3em] hover:bg-blue-600 shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-              ENTRAR NO SISTEMA
+              AUTENTICAR NA REDE
             </button>
           </form>
         </div>
         
-        <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Rede Master Compartilhada • 2024
+        <p className="text-center text-[9px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
+          Infraestrutura Master Compartilhada • v2.0
         </p>
       </div>
     </div>

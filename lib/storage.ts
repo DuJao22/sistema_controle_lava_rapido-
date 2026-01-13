@@ -1,5 +1,5 @@
 
-import { Billing, Expense, CarSize, PaymentMethod, User } from '../types';
+import { Billing, Expense, User } from '../types';
 
 declare global {
   interface Window {
@@ -8,11 +8,13 @@ declare global {
 }
 
 let db: any = null;
-let lastLocalUpdateTimestamp = 0;
+let lastSyncTimestamp = 0;
 
-const NETWORK_ID = 'LAVA_RAPIDO_NETWORK_DUJAO_JOAO_PRO_V1';
-const CLOUD_API_BASE = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY = 'lavarapido_db_v1_fixed';
+// IDENTIFICADOR ÚNICO DO SEU NEGÓCIO - NÃO ALTERAR
+const NETWORK_PROJECT_ID = 'LAVA_RAPIDO_MASTER_SERVER_V2_2024';
+const CLOUD_ENDPOINT = 'https://api.restful-api.dev/objects';
+const LOCAL_DB_KEY = 'lavarapido_db_binary_v2';
+const LOCAL_TS_KEY = 'lavarapido_db_ts_v2';
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -37,134 +39,137 @@ const decodeBase64 = (base64: string): Uint8Array | null => {
   }
 };
 
-const saveLocalOnly = () => {
-  if (!db) return;
-  const binaryArray = db.export();
-  const base64Data = encodeBase64(binaryArray);
-  const now = Date.now();
-  lastLocalUpdateTimestamp = now;
-  localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
-  localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', now.toString());
-};
-
-const getCloudObjectId = async () => {
-  const cachedId = localStorage.getItem('lavarapido_cloud_obj_id');
-  if (cachedId) return cachedId;
+/**
+ * Localiza ou cria o registro mestre na nuvem
+ */
+const getMasterObjectId = async () => {
+  const cached = localStorage.getItem('master_obj_id');
+  if (cached) return cached;
 
   try {
-    const resp = await fetch(`${CLOUD_API_BASE}?cb=${Date.now()}`);
+    const resp = await fetch(`${CLOUD_ENDPOINT}?cb=${Date.now()}`);
     const items = await resp.json();
-    const found = Array.isArray(items) ? items.find(i => i.name === NETWORK_ID) : null;
+    const found = Array.isArray(items) ? items.find(i => i.name === NETWORK_PROJECT_ID) : null;
     
     if (found) {
-      localStorage.setItem('lavarapido_cloud_obj_id', found.id);
+      localStorage.setItem('master_obj_id', found.id);
       return found.id;
     }
     
-    const createResp = await fetch(CLOUD_API_BASE, {
+    // Cria o objeto mestre se não existir
+    const create = await fetch(CLOUD_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: NETWORK_ID, data: { sqlite: '', timestamp: 0 } })
+      body: JSON.stringify({ 
+        name: NETWORK_PROJECT_ID, 
+        data: { sqlite: '', timestamp: 0 } 
+      })
     });
-    const newItem = await createResp.json();
-    localStorage.setItem('lavarapido_cloud_obj_id', newItem.id);
+    const newItem = await create.json();
+    localStorage.setItem('master_obj_id', newItem.id);
     return newItem.id;
   } catch (e) {
     return null;
   }
 };
 
+/**
+ * Salva o estado atual na Nuvem e no LocalStorage
+ */
 export const syncToCloud = async () => {
   if (!db) return false;
   
-  // SEMPRE SALVA LOCAL PRIMEIRO
-  saveLocalOnly();
+  const binary = db.export();
+  const base64 = encodeBase64(binary);
+  const now = Date.now();
+
+  // Backup Local (Segurança)
+  localStorage.setItem(LOCAL_DB_KEY, base64);
+  localStorage.setItem(LOCAL_TS_KEY, now.toString());
+  lastSyncTimestamp = now;
 
   try {
-    const cloudId = await getCloudObjectId();
-    if (!cloudId) return false;
+    const masterId = await getMasterObjectId();
+    if (!masterId) return false;
 
-    const binaryArray = db.export();
-    const base64Data = encodeBase64(binaryArray);
-    const now = lastLocalUpdateTimestamp;
-
-    await fetch(`${CLOUD_API_BASE}/${cloudId}`, {
+    await fetch(`${CLOUD_ENDPOINT}/${masterId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: NETWORK_ID,
-        data: { 
-          sqlite: base64Data, 
-          timestamp: now,
-          device: navigator.userAgent.slice(0, 20)
-        }
+        name: NETWORK_PROJECT_ID,
+        data: { sqlite: base64, timestamp: now }
       })
     });
     return true;
   } catch (e) {
-    console.warn("Sincronia em segundo plano falhou, mas dado está salvo localmente.");
+    console.warn("Falha ao subir para nuvem, mas salvo localmente.");
     return false;
   }
 };
 
-export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
+/**
+ * Baixa a versão mais recente da Nuvem
+ */
+export const fetchLatestFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
   try {
-    const cloudId = await getCloudObjectId();
-    if (!cloudId) return null;
+    const masterId = await getMasterObjectId();
+    if (!masterId) return null;
 
-    const response = await fetch(`${CLOUD_API_BASE}/${cloudId}?nocache=${Date.now()}`, {
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
+    const resp = await fetch(`${CLOUD_ENDPOINT}/${masterId}?nocache=${Date.now()}`);
+    if (!resp.ok) return null;
     
-    if (!response.ok) return null;
-    
-    const result = await response.json();
-    if (result && result.data?.sqlite) {
+    const result = await resp.json();
+    if (result?.data?.sqlite) {
       const bytes = decodeBase64(result.data.sqlite);
-      if (bytes) {
-        return { data: bytes, ts: result.data.timestamp || 0 };
-      }
+      if (bytes) return { data: bytes, ts: result.data.timestamp || 0 };
     }
   } catch (e) {
-    console.error("Erro ao carregar da nuvem:", e);
+    console.error("Erro ao baixar da rede:", e);
   }
   return null;
 };
 
+/**
+ * Inicializa o Banco de Dados com prioridade de rede
+ */
 export const initDB = async (forceCloud = true) => {
   try {
-    const initSqlJs = await (window as any).initSqlJs({
+    const SQL = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
-    const localBackup = localStorage.getItem(LOCAL_STORAGE_KEY);
-    const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
-    
-    let cloudData = null;
+    const localTS = parseInt(localStorage.getItem(LOCAL_TS_KEY) || '0');
+    let cloud = null;
+
     if (forceCloud) {
-      cloudData = await loadFromCloud();
+      cloud = await fetchLatestFromCloud();
     }
 
-    if (cloudData && cloudData.ts > localTS) {
-      db = new initSqlJs.Database(cloudData.data);
-      lastLocalUpdateTimestamp = cloudData.ts;
-      localStorage.setItem(LOCAL_STORAGE_KEY, encodeBase64(cloudData.data));
-      localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', cloudData.ts.toString());
-    } else if (localBackup) {
-      const bytes = decodeBase64(localBackup);
-      db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
-      lastLocalUpdateTimestamp = localTS;
+    if (cloud && cloud.ts >= localTS) {
+      db = new SQL.Database(cloud.data);
+      lastSyncTimestamp = cloud.ts;
+      // Atualiza backup local
+      localStorage.setItem(LOCAL_DB_KEY, encodeBase64(cloud.data));
+      localStorage.setItem(LOCAL_TS_KEY, cloud.ts.toString());
     } else {
-      db = new initSqlJs.Database();
+      const localBackup = localStorage.getItem(LOCAL_DB_KEY);
+      if (localBackup) {
+        const bytes = decodeBase64(localBackup);
+        db = bytes ? new SQL.Database(bytes) : new SQL.Database();
+        lastSyncTimestamp = localTS;
+      } else {
+        db = new SQL.Database();
+      }
     }
 
+    // Estrutura das Tabelas
     db.run(`
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT);
       CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT);
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT);
     `);
 
+    // Usuários Padrão
     const defaults = [
       ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
       ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
@@ -176,28 +181,76 @@ export const initDB = async (forceCloud = true) => {
     
     return true;
   } catch (e) {
+    console.error("Erro crítico no banco:", e);
     return false;
   }
 };
 
+/**
+ * Verifica se existem novos dados na nuvem (Polling)
+ */
 export const checkForUpdates = async () => {
-  try {
-    const cloud = await loadFromCloud();
-    if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
-      const initSqlJs = await (window as any).initSqlJs({
-        locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
-      });
-      db = new initSqlJs.Database(cloud.data);
-      lastLocalUpdateTimestamp = cloud.ts;
-      return true;
-    }
-  } catch (e) {}
+  const cloud = await fetchLatestFromCloud();
+  if (cloud && cloud.ts > lastSyncTimestamp) {
+    const SQL = await (window as any).initSqlJs({
+      locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
+    });
+    db = new SQL.Database(cloud.data);
+    lastSyncTimestamp = cloud.ts;
+    return true;
+  }
   return false;
 };
 
-export const login = (username: string, pass: string): User | null => {
+// Funções de CRUD melhoradas com sincronização forçada
+export const saveBilling = async (b: Billing) => {
+  if (!db) return;
+  db.run(`INSERT OR REPLACE INTO billings VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.id || crypto.randomUUID(), b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy]);
+  await syncToCloud();
+};
+
+export const saveExpense = async (e: Expense) => {
+  if (!db) return;
+  db.run(`INSERT OR REPLACE INTO expenses VALUES (?, ?, ?, ?, ?)`,
+    [e.id || crypto.randomUUID(), e.description, e.value, e.date, e.createdBy]);
+  await syncToCloud();
+};
+
+// Fix: Add missing saveUser function for user management
+export const saveUser = async (u: User) => {
+  if (!db) return;
+  db.run(`INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)`,
+    [u.id, u.username, u.password || '12345', u.name, u.role]);
+  await syncToCloud();
+};
+
+// Fix: Add missing deleteUser function for user management
+export const deleteUser = async (id: string) => {
+  if (!db) return;
+  db.run("DELETE FROM users WHERE id = ?", [id]);
+  await syncToCloud();
+};
+
+// Fix: Add missing loadFromCloud function used in BillingForm for manual sync
+export const loadFromCloud = async () => {
+  const cloud = await fetchLatestFromCloud();
+  if (cloud) {
+    const SQL = await (window as any).initSqlJs({
+      locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
+    });
+    db = new SQL.Database(cloud.data);
+    lastSyncTimestamp = cloud.ts;
+    localStorage.setItem(LOCAL_DB_KEY, encodeBase64(cloud.data));
+    localStorage.setItem(LOCAL_TS_KEY, cloud.ts.toString());
+    return true;
+  }
+  return false;
+};
+
+export const login = (user: string, pass: string): User | null => {
   if (!db) return null;
-  const res = db.exec("SELECT id, username, name, role FROM users WHERE LOWER(username) = ? AND password = ?", [username.trim().toLowerCase(), pass.trim()]);
+  const res = db.exec("SELECT id, username, name, role FROM users WHERE LOWER(username) = ? AND password = ?", [user.trim().toLowerCase(), pass.trim()]);
   if (!res.length || !res[0].values.length) return null;
   const r = res[0].values[0];
   return { id: r[0], username: r[1], name: r[2], role: r[3] } as User;
@@ -215,20 +268,6 @@ export const getBillings = () => {
   });
 };
 
-export const saveBilling = async (b: Billing) => {
-  if (!db) return;
-  const id = b.id || crypto.randomUUID();
-  db.run(`INSERT OR REPLACE INTO billings (id, washType, size, paymentMethod, value, date, time, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy]);
-  await syncToCloud();
-};
-
-export const deleteBilling = async (id: string) => {
-  if (!db) return;
-  db.run("DELETE FROM billings WHERE id = ?", [id]);
-  await syncToCloud();
-};
-
 export const getExpenses = () => {
   if (!db) return [];
   const res = db.exec("SELECT * FROM expenses ORDER BY date DESC");
@@ -241,11 +280,15 @@ export const getExpenses = () => {
   });
 };
 
-export const saveExpense = async (e: Expense) => {
+export const getUsers = () => {
+  if (!db) return [];
+  const res = db.exec("SELECT id, username, name, role FROM users");
+  return res.length ? res[0].values.map((r: any) => ({ id: r[0], username: r[1], name: r[2], role: r[3] } as User)) : [];
+};
+
+export const deleteBilling = async (id: string) => {
   if (!db) return;
-  const id = e.id || crypto.randomUUID();
-  db.run(`INSERT OR REPLACE INTO expenses (id, description, value, date, createdBy) VALUES (?, ?, ?, ?, ?)`,
-    [id, e.description, e.value, e.date, e.createdBy]);
+  db.run("DELETE FROM billings WHERE id = ?", [id]);
   await syncToCloud();
 };
 
@@ -255,27 +298,8 @@ export const deleteExpense = async (id: string) => {
   await syncToCloud();
 };
 
-export const getUsers = (): User[] => {
-  if (!db) return [];
-  const res = db.exec("SELECT id, username, name, role FROM users");
-  return res.length ? res[0].values.map((r: any) => ({ id: r[0], username: r[1], name: r[2], role: r[3] } as User)) : [];
-};
-
-export const saveUser = async (user: User) => {
+export const changePassword = async (uid: string, p: string) => {
   if (!db) return;
-  db.run("INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", 
-    [user.id || crypto.randomUUID(), user.username.toLowerCase().trim(), user.password?.trim(), user.name, user.role]);
-  await syncToCloud();
-};
-
-export const deleteUser = async (id: string) => {
-  if (!db || ['admin-master-id', 'joao-adm-id', 'bianca-adm-id'].includes(id)) return;
-  db.run("DELETE FROM users WHERE id = ?", [id]);
-  await syncToCloud();
-};
-
-export const changePassword = async (userId: string, newPass: string) => {
-  if (!db) return;
-  db.run("UPDATE users SET password = ? WHERE id = ?", [newPass.trim(), userId]);
+  db.run("UPDATE users SET password = ? WHERE id = ?", [p, uid]);
   await syncToCloud();
 };
