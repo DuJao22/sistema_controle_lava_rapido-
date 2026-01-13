@@ -10,9 +10,9 @@ declare global {
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
-// ID fixo para o estabelecimento único
 const CLOUD_ID = 'LAVARAPIDO_PRO_SISTEMA_UNICO';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
+const LOCAL_STORAGE_KEY = 'lavarapido_db_backup';
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -37,8 +37,21 @@ const decodeBase64 = (base64: string): Uint8Array | null => {
   }
 };
 
+// Salva no localStorage para redundância imediata
+const saveToLocalBackup = () => {
+  if (!db) return;
+  const binaryArray = db.export();
+  const base64Data = encodeBase64(binaryArray);
+  localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
+  localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', Date.now().toString());
+};
+
 export const syncToCloud = async () => {
   if (!db) return;
+  
+  // Primeiro garante o backup local
+  saveToLocalBackup();
+
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
@@ -59,7 +72,7 @@ export const syncToCloud = async () => {
     lastLocalUpdateTimestamp = now;
     localStorage.setItem('lavarapido_last_sync', new Date(now).toISOString());
   } catch (e) {
-    console.error("Erro ao sincronizar:", e);
+    console.warn("Erro ao sincronizar com a nuvem, mantendo apenas backup local.");
   }
 };
 
@@ -79,7 +92,7 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     }
   } catch (e) {
-    console.warn("Sem dados na nuvem.");
+    console.warn("Sem dados novos na nuvem.");
   }
   return null;
 };
@@ -90,10 +103,24 @@ export const initDB = async () => {
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
+    // 1. Tenta carregar da nuvem primeiro
     const cloudData = await loadFromCloud();
-    if (cloudData) {
+    
+    // 2. Tenta carregar do backup local se for mais novo ou se a nuvem falhou
+    const localBackupBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
+
+    if (cloudData && cloudData.ts >= localTS) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
+    } else if (localBackupBase64) {
+      const localBytes = decodeBase64(localBackupBase64);
+      if (localBytes) {
+        db = new initSqlJs.Database(localBytes);
+        lastLocalUpdateTimestamp = localTS;
+      } else {
+        db = new initSqlJs.Database();
+      }
     } else {
       db = new initSqlJs.Database();
     }
@@ -125,29 +152,30 @@ export const initDB = async () => {
       );
     `);
 
-    // Garantir que os administradores padrão existam (INSERT OR IGNORE evita duplicatas pelo username UNIQUE)
+    // GARANTIA: Estes usuários DEVEM existir sempre
     const usersToInsert = [
-      [crypto.randomUUID(), 'Dujao22', '30031936Vo.', 'Admin Master', 'admin'],
-      [crypto.randomUUID(), 'joao.adm', '12345', 'João', 'admin'],
-      [crypto.randomUUID(), 'bianca.adm', '12345', 'Bianca', 'admin']
+      ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
+      ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
+      ['bianca-adm-id', 'bianca.adm', '12345', 'Bianca', 'admin']
     ];
 
-    let changesMade = false;
+    let forceSync = false;
     for (const u of usersToInsert) {
-      const check = db.exec("SELECT COUNT(*) FROM users WHERE username = ?", [u[1]]);
-      if (check[0].values[0][0] === 0) {
+      // Verifica se o username já existe (ignorando caixa alta/baixa)
+      const res = db.exec("SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(?)", [u[1]]);
+      if (res[0].values[0][0] === 0) {
         db.run("INSERT INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", u);
-        changesMade = true;
+        forceSync = true;
       }
     }
 
-    if (changesMade) {
+    if (forceSync) {
       await syncToCloud();
     }
 
     return true;
   } catch (error) {
-    console.error("Erro initDB:", error);
+    console.error("Erro crítico initDB:", error);
     return false;
   }
 };
@@ -160,6 +188,8 @@ export const checkForUpdates = async (): Promise<boolean> => {
     });
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
+    // Atualiza backup local também
+    saveToLocalBackup();
     return true;
   }
   return false;
@@ -167,7 +197,8 @@ export const checkForUpdates = async (): Promise<boolean> => {
 
 export const login = (username: string, pass: string): User | null => {
   if (!db) return null;
-  const res = db.exec("SELECT * FROM users WHERE username = ? AND password = ?", [username, pass]);
+  // Login insensível a maiúsculas no username para facilitar o uso
+  const res = db.exec("SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", [username.trim(), pass]);
   if (!res.length || !res[0].values.length) return null;
   const row = res[0].values[0];
   return { id: row[0], username: row[1], name: row[3], role: row[4] } as User;
@@ -189,7 +220,7 @@ export const getUsers = (): User[] => {
 export const saveUser = async (user: User) => {
   if (!db) return;
   db.run("INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", 
-    [user.id || crypto.randomUUID(), user.username, user.password, user.name, user.role]);
+    [user.id || crypto.randomUUID(), user.username.toLowerCase(), user.password, user.name, user.role]);
   await syncToCloud();
 };
 
