@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Trash2, Shield, User as UserIcon, X, Check } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User as UserIcon, X, Check, Key } from 'lucide-react';
 import { User } from '../types';
-import { getUsers, saveUser, deleteUser } from '../lib/storage';
+import { getUsers, saveUser, deleteUser, changePassword } from '../lib/storage';
 
 export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -26,10 +26,16 @@ export const UserManagement: React.FC = () => {
     load();
   };
 
+  const handleResetPassword = async (userId: string, userName: string) => {
+    if (confirm(`Deseja resetar a senha de ${userName} para "12345"?`)) {
+      await changePassword(userId, '12345');
+      alert('Senha resetada com sucesso para: 12345');
+    }
+  };
+
   const handleDelete = async (id: string, username: string) => {
-    // Proteger administradores fixos de serem deletados por acidente
-    const protectedUsers = ['Dujao22', 'joao.adm', 'bianca.adm'];
-    if (protectedUsers.includes(username)) {
+    const protectedUsers = ['dujao22', 'joao.adm', 'bianca.adm'];
+    if (protectedUsers.includes(username.toLowerCase())) {
       return alert('Este usuário administrador é protegido e não pode ser removido.');
     }
     
@@ -66,14 +72,25 @@ export const UserManagement: React.FC = () => {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">@{u.username}</p>
               </div>
             </div>
-            {!['Dujao22', 'joao.adm', 'bianca.adm'].includes(u.username) && (
+            
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
               <button 
-                onClick={() => handleDelete(u.id, u.username)}
-                className="p-3 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                onClick={() => handleResetPassword(u.id, u.name)}
+                className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                title="Resetar Senha"
               >
-                <Trash2 size={18} />
+                <Key size={18} />
               </button>
-            )}
+              
+              {!['dujao22', 'joao.adm', 'bianca.adm'].includes(u.username.toLowerCase()) && (
+                <button 
+                  onClick={() => handleDelete(u.id, u.username)}
+                  className="p-3 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                >
+                  <Trash2 size={18} />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -101,9 +118,9 @@ export const UserManagement: React.FC = () => {
                   <label className="block text-[10px] font-black text-slate-700 uppercase mb-2 tracking-widest">Username (Login)</label>
                   <input 
                     required 
-                    placeholder="Ex: joao.lavagem"
+                    placeholder="Ex: joao.adm"
                     value={formData.username} 
-                    onChange={e => setFormData({...formData, username: e.target.value.toLowerCase()})} 
+                    onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().trim()})} 
                     className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400" 
                   />
                 </div>
