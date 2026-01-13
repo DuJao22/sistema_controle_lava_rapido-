@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, Check } from 'lucide-react';
-import { changePassword } from '../lib/storage';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, Check, RefreshCw, Cloud } from 'lucide-react';
+import { changePassword, initDB } from '../lib/storage';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,12 +16,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChanging, setIsChanging] = useState(false);
+  const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('lavarapido_user_id');
     localStorage.removeItem('lavarapido_user_name');
     localStorage.removeItem('lavarapido_user_role');
     window.location.reload();
+  };
+
+  const handleGlobalSync = async () => {
+    setIsGlobalSyncing(true);
+    const success = await initDB(true); // Força download da nuvem
+    if (success) {
+      window.location.reload(); // Recarrega a página para aplicar os novos dados
+    } else {
+      alert("Falha ao sincronizar. Verifique a internet.");
+    }
+    setIsGlobalSyncing(false);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -90,6 +102,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         </nav>
 
         <div className="mt-auto space-y-4 pt-6 border-t border-slate-800/50">
+          {/* Botão de Sincronização Global Ultra Visível */}
+          <button 
+            onClick={handleGlobalSync}
+            className="w-full flex items-center justify-center gap-3 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-emerald-500/20 transition-all active:scale-95 group"
+          >
+            <RefreshCw size={16} className={isGlobalSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'} />
+            Sincronizar Tudo
+          </button>
+
           <div className="bg-slate-800/40 p-4 rounded-3xl border border-white/5">
             <div className="flex items-center gap-3 mb-3">
               <div className={`p-2 rounded-xl ${userRole === 'admin' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-400'}`}>
@@ -131,6 +152,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
               </div>
            </div>
            <div className="flex gap-2">
+             <button onClick={handleGlobalSync} className="p-2 text-emerald-600 bg-emerald-50 rounded-xl">
+                <RefreshCw size={18} className={isGlobalSyncing ? 'animate-spin' : ''} />
+             </button>
              <button onClick={() => setIsPasswordModalOpen(true)} className="p-2 text-slate-600 bg-slate-100 rounded-xl"><Lock size={18} /></button>
              <button onClick={handleLogout} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><LogOut size={18} /></button>
            </div>
