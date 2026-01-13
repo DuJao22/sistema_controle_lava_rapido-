@@ -11,12 +11,11 @@ let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
 /**
- * CHAVE GLOBAL ÚNICA E IMUTÁVEL
- * Esta chave garante que todos os usuários do sistema compartilhem o mesmo banco de dados.
+ * CHAVE GLOBAL ÚNICA - Alterada para garantir exclusividade total no servidor de sincronização
  */
-const GLOBAL_SYNC_KEY = 'LAVA_RAPIDO_PRO_UNIVERSAL_DATA_V1'; 
+const GLOBAL_SYNC_KEY = 'LAVA_RAPIDO_PRO_SYNC_FINAL_2024_V102'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY_PREFIX = 'lavarapido_db_v12';
+const LOCAL_STORAGE_KEY_PREFIX = 'lavarapido_db_v102';
 
 export const getSyncKey = () => GLOBAL_SYNC_KEY;
 
@@ -61,19 +60,28 @@ export const syncToCloud = async () => {
     const base64Data = encodeBase64(binaryArray);
     const now = Date.now();
     
+    // Forçamos o salvamento local antes da nuvem
     saveToLocalBackup(now);
 
     const response = await fetch(CLOUD_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
       body: JSON.stringify({
         name: `LR_SYNC_${GLOBAL_SYNC_KEY}`,
-        data: { sqlite: base64Data, timestamp: now, sender: localStorage.getItem('lavarapido_user_name') }
+        data: { 
+          sqlite: base64Data, 
+          timestamp: now, 
+          sender: localStorage.getItem('lavarapido_user_name') || 'unknown' 
+        }
       })
     });
     
     if (response.ok) {
       lastLocalUpdateTimestamp = now;
+      console.log(`[SYNC] Enviado para Nuvem: ${new Date(now).toLocaleTimeString()}`);
       return true;
     }
   } catch (e) {
@@ -84,14 +92,20 @@ export const syncToCloud = async () => {
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
   try {
-    const response = await fetch(`${CLOUD_API_URL}?t=${Date.now()}`, {
+    // Cache busting: adicionamos um parâmetro aleatório para evitar resultados cacheados do navegador
+    const response = await fetch(`${CLOUD_API_URL}?cb=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
+      headers: { 
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
     });
     
     const results = await response.json();
     if (Array.isArray(results)) {
       const prefix = `LR_SYNC_${GLOBAL_SYNC_KEY}`;
+      
+      // Filtramos e pegamos o item com o maior timestamp (mais recente)
       const myEntries = results
         .filter(r => r.name === prefix && r.data?.sqlite && r.data?.timestamp)
         .sort((a, b) => b.data.timestamp - a.data.timestamp);
@@ -120,19 +134,22 @@ export const initDB = async (forceCloud = true) => {
     const key = LOCAL_STORAGE_KEY_PREFIX + '_' + GLOBAL_SYNC_KEY;
     const localTS = parseInt(localStorage.getItem(key + '_ts') || '0');
 
-    if (cloudData && (forceCloud || cloudData.ts >= localTS)) {
+    // Sempre prefira os dados da nuvem se existirem e forem mais novos (ou se forceCloud for true)
+    if (cloudData && (forceCloud || cloudData.ts > localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
       saveToLocalBackup(cloudData.ts);
-      console.log(`[SYNC] Banco Global Conectado`);
+      console.log(`[SYNC] Dados da Nuvem Carregados. TS: ${cloudData.ts}`);
     } else {
       const localBackupBase64 = localStorage.getItem(key);
       if (localBackupBase64) {
         const bytes = decodeBase64(localBackupBase64);
         db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
         lastLocalUpdateTimestamp = localTS;
+        console.log(`[SYNC] Dados Locais Carregados.`);
       } else {
         db = new initSqlJs.Database();
+        console.log(`[SYNC] Novo Banco de Dados Criado.`);
       }
     }
 
@@ -166,6 +183,7 @@ export const checkForUpdates = async () => {
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
     saveToLocalBackup(cloud.ts);
+    console.log(`[SYNC] Banco atualizado pela nuvem automaticamente.`);
     return true;
   }
   return false;

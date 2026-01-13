@@ -9,7 +9,7 @@ import { UserManagement } from './components/UserManagement';
 import { Login } from './components/Login';
 import { initDB, getBillings, getExpenses, checkForUpdates } from './lib/storage';
 import { Billing, Expense } from './types';
-import { Loader2, RefreshCw, CloudOff, Globe, Wifi, CheckCircle } from 'lucide-react';
+import { Loader2, RefreshCw, CloudOff, Globe, Wifi, CheckCircle, Sync } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [isLogged, setIsLogged] = React.useState(!!localStorage.getItem('lavarapido_user_id'));
@@ -30,11 +30,13 @@ export const App: React.FC = () => {
     
     try {
       setLastSyncStatus('syncing');
+      // Tenta buscar atualizações da nuvem
       const hasUpdates = await checkForUpdates();
       
       if (hasUpdates) {
         setIsSyncing(true);
         refreshLocalData();
+        // Feedback visual de sucesso
         setTimeout(() => setIsSyncing(false), 3000);
       }
       setLastSyncStatus('online');
@@ -47,6 +49,7 @@ export const App: React.FC = () => {
   React.useEffect(() => {
     if (isLogged) {
       const setup = async () => {
+        // No login, sempre forçamos a busca da versão mais recente da nuvem
         const ready = await initDB(true);
         setIsDbReady(ready);
         if (ready) refreshLocalData();
@@ -55,11 +58,13 @@ export const App: React.FC = () => {
     }
   }, [isLogged]);
 
+  // Loop de Sincronização Automática - Rodando a cada 4 segundos para mais agilidade
   React.useEffect(() => {
     if (!isDbReady || !isLogged) return;
 
-    const interval = setInterval(performSyncCheck, 5000);
+    const interval = setInterval(performSyncCheck, 4000);
 
+    // Re-sincronizar quando o usuário volta para a aba do sistema
     const handleFocus = () => performSyncCheck();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', performSyncCheck);
@@ -69,7 +74,7 @@ export const App: React.FC = () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', performSyncCheck);
     };
-  }, [isDbReady, isLogged]);
+  }, [isDbReady, isLogged, activeTab]);
 
   if (!isLogged) {
     return <Login onLoginSuccess={() => setIsLogged(true)} />;
@@ -83,8 +88,8 @@ export const App: React.FC = () => {
           <Globe className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white w-8 h-8 opacity-50" />
         </div>
         <div className="text-center px-6">
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Sincronizando Banco Global</h2>
-          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Baixando dados compartilhados da nuvem...</p>
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Conectando à Nuvem Global</h2>
+          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Sincronizando dados com outros aparelhos...</p>
         </div>
       </div>
     );
@@ -103,26 +108,29 @@ export const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {/* Indicador de Nuvem Global */}
+      {/* Indicador de Nuvem Global - Mais visível e informativo */}
       <div className="fixed top-4 right-4 z-[200] flex flex-col items-end gap-2 pointer-events-none">
         {isSyncing && (
           <div className="bg-emerald-600 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-right duration-500 border border-emerald-400">
              <CheckCircle size={14} className="text-white" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Dados Atualizados!</span>
+             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Dados Atualizados da Nuvem!</span>
           </div>
         )}
         
-        <div className={`px-3 py-1.5 rounded-xl shadow-lg border-2 flex items-center gap-2 ${
+        <div className={`px-4 py-2 rounded-2xl shadow-xl border-2 flex items-center gap-3 transition-all duration-500 ${
           lastSyncStatus === 'online' ? 'bg-white text-emerald-600 border-emerald-100' : 
           lastSyncStatus === 'syncing' ? 'bg-white text-blue-600 border-blue-100' : 'bg-rose-600 text-white border-rose-400'
         }`}>
-          <div className="flex items-center gap-1.5">
-             {lastSyncStatus === 'online' ? <Wifi size={14} /> : 
+          <div className="flex items-center gap-2">
+             {lastSyncStatus === 'online' ? <Wifi size={14} className="animate-pulse" /> : 
               lastSyncStatus === 'syncing' ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />}
-             <span className="text-[8px] font-black uppercase tracking-tighter">
-               {lastSyncStatus === 'online' ? 'Global Link OK' : 
-                lastSyncStatus === 'syncing' ? 'Baixando...' : 'Sem Internet'}
-             </span>
+             <div className="flex flex-col">
+                <span className="text-[8px] font-black uppercase tracking-tighter leading-none">
+                  {lastSyncStatus === 'online' ? 'Conectado' : 
+                   lastSyncStatus === 'syncing' ? 'Sincronizando' : 'Offline'}
+                </span>
+                <span className="text-[6px] font-bold uppercase opacity-60">Rede Global Ativa</span>
+             </div>
           </div>
         </div>
       </div>
