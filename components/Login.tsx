@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, RefreshCw } from 'lucide-react';
-import { login, initDB } from '../lib/storage';
+import React, { useState, useEffect } from 'react';
+import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, RefreshCw, Globe, CheckCircle2 } from 'lucide-react';
+import { login, initDB, getSyncKey } from '../lib/storage';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -10,20 +10,27 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [syncKey, setSyncKey] = useState(getSyncKey());
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!syncKey.trim()) {
+      setError('A Chave da Empresa é obrigatória.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const ready = await initDB();
+      localStorage.setItem('lavarapido_sync_key', syncKey.trim().toUpperCase());
+      
+      const ready = await initDB(true);
       if (!ready) {
-        setError('Erro ao conectar ao banco de dados.');
+        setError('Erro ao conectar à rede. Verifique sua conexão.');
         setLoading(false);
         return;
       }
@@ -36,28 +43,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         localStorage.setItem('lavarapido_user_role', user.role);
         onLoginSuccess(user);
       } else {
-        setError('Usuário ou senha incorretos.');
+        setError('Usuário ou senha incorretos nesta rede.');
       }
     } catch (err) {
       setError('Erro ao processar login.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleManualSync = async () => {
-    setIsSyncing(true);
-    try {
-      const success = await initDB(true); 
-      if (success) {
-        alert('Sistema Reparado! Tente entrar como joao.adm ou bianca.adm com a senha 12345.');
-      } else {
-        alert('Não foi possível sincronizar com a nuvem.');
-      }
-    } catch (e) {
-      alert('Erro na sincronização forçada.');
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -69,7 +60,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <Car size={40} className="text-white" />
           </div>
           <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Painel Administrativo</p>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2">
+            <Globe size={14} className="text-blue-500" /> Acesso Global Inteligente
+          </p>
         </div>
 
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl space-y-8 relative overflow-hidden">
@@ -81,41 +74,62 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           )}
 
           <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                <UserIcon size={12} className="text-blue-600" /> Seu Usuário
+            <div className="bg-emerald-50 p-6 rounded-3xl border-2 border-emerald-100 mb-2 relative">
+              <div className="absolute top-4 right-4 text-emerald-500 animate-pulse">
+                <CheckCircle2 size={16} />
+              </div>
+              <label className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                Rede Detectada (Padrão)
               </label>
               <input
                 required
                 type="text"
-                autoFocus
-                placeholder="Ex: joao.adm"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
+                placeholder="EX: LAVA_RAPIDO_CENTRAL"
+                value={syncKey}
+                onChange={(e) => setSyncKey(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white border-2 border-transparent focus:border-emerald-500 outline-none font-black text-emerald-900 transition-all placeholder:text-emerald-200 uppercase"
               />
+              <p className="text-[8px] text-emerald-500 mt-2 font-bold uppercase leading-tight italic">
+                * Conectado automaticamente à sua rede master.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                <Lock size={12} className="text-blue-600" /> Sua Senha
-              </label>
-              <div className="relative">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <UserIcon size={12} className="text-blue-600" /> Usuário
+                </label>
                 <input
                   required
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  type="text"
+                  placeholder="Seu usuário"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
                 />
-                <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-2"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <Lock size={12} className="text-blue-600" /> Senha
+                </label>
+                <div className="relative">
+                  <input
+                    required
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-2"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -124,25 +138,14 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               type="submit"
               className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs tracking-[0.2em] hover:bg-slate-800 shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} className="group-hover:translate-x-1 transition-transform" />}
-              ACESSAR SISTEMA
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+              ENTRAR NO SISTEMA
             </button>
           </form>
-
-          <div className="pt-4 border-t border-slate-100 flex justify-center">
-            <button 
-              type="button"
-              onClick={handleManualSync}
-              className="flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 hover:text-blue-600 transition-colors tracking-widest"
-            >
-              <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
-              Problemas com login? Clique aqui para Reparar
-            </button>
-          </div>
         </div>
         
         <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Versão 2.7.0 • Gestão Privada
+          Rede Master • Global Sync Enabled
         </p>
       </div>
     </div>

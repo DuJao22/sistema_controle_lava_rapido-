@@ -11,12 +11,31 @@ let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
 /**
- * ESTE É O SEU CANAL DE REDE EXCLUSIVO.
- * Todos os dispositivos com este ID verão os mesmos dados.
+ * CHAVE DEFINITIVA PADRÃO:
+ * Todos que acessarem o link entrarão nesta rede automaticamente.
  */
-const CLOUD_ID = 'LAVA_RAPIDO_PRO_SYNC_STATION_GLOBAL_V11'; 
+const DEFAULT_SYNC_KEY = 'LAVA_RAPIDO_MASTER_PRO_V12'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY = 'lavarapido_db_v11';
+const LOCAL_STORAGE_KEY_PREFIX = 'lavarapido_db_v12';
+
+// Função para obter a chave da rede atual (URL > LocalStorage > Default)
+export const getSyncKey = () => {
+  // 1. Tenta pegar da URL (?key=SUA_CHAVE)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlKey = urlParams.get('key');
+  if (urlKey) {
+    localStorage.setItem('lavarapido_sync_key', urlKey.toUpperCase());
+    return urlKey.toUpperCase();
+  }
+
+  // 2. Tenta pegar do LocalStorage
+  const storedKey = localStorage.getItem('lavarapido_sync_key');
+  if (storedKey) return storedKey;
+
+  // 3. Retorna a Chave Definitiva Padrão
+  localStorage.setItem('lavarapido_sync_key', DEFAULT_SYNC_KEY);
+  return DEFAULT_SYNC_KEY;
+};
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -46,28 +65,28 @@ const saveToLocalBackup = (timestamp: number) => {
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
-    localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', timestamp.toString());
+    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + getSyncKey();
+    localStorage.setItem(key, base64Data);
+    localStorage.setItem(key + '_ts', timestamp.toString());
   } catch (e) { }
 };
 
 export const syncToCloud = async () => {
   if (!db) return false;
+  const syncKey = getSyncKey();
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
     const now = Date.now();
     
-    // 1. Salva localmente (segurança caso a internet caia no meio do envio)
     saveToLocalBackup(now);
 
-    // 2. Envia para a Nuvem Global (Obrigatório para o João ver)
     const response = await fetch(CLOUD_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: CLOUD_ID,
-        data: { sqlite: base64Data, timestamp: now }
+        name: `LR_SYNC_${syncKey}`,
+        data: { sqlite: base64Data, timestamp: now, sender: localStorage.getItem('lavarapido_user_name') }
       })
     });
     
@@ -76,24 +95,24 @@ export const syncToCloud = async () => {
       return true;
     }
   } catch (e) {
-    console.error("Erro ao sincronizar com a nuvem global:", e);
+    console.error("Erro na Sincronização Global:", e);
   }
   return false;
 };
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
+  const syncKey = getSyncKey();
   try {
-    // Busca na API todos os objetos e filtra pelo seu canal exclusivo
-    const response = await fetch(`${CLOUD_API_URL}?nocache=${Date.now()}`, {
+    const response = await fetch(`${CLOUD_API_URL}?t=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      headers: { 'Cache-Control': 'no-cache' }
     });
     
     const results = await response.json();
     if (Array.isArray(results)) {
-      // Pega a versão mais nova enviada por qualquer dispositivo (Master, João ou Bianca)
+      const prefix = `LR_SYNC_${syncKey}`;
       const myEntries = results
-        .filter(r => r.name === CLOUD_ID && r.data?.sqlite && r.data?.timestamp)
+        .filter(r => r.name === prefix && r.data?.sqlite && r.data?.timestamp)
         .sort((a, b) => b.data.timestamp - a.data.timestamp);
         
       if (myEntries.length > 0) {
@@ -105,7 +124,7 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     }
   } catch (e) {
-    console.error("Erro ao carregar dados globais:", e);
+    console.error("Erro ao buscar dados na nuvem:", e);
   }
   return null;
 };
@@ -116,19 +135,17 @@ export const initDB = async (forceCloud = true) => {
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
-    // CLOUD-FIRST: Sempre tenta carregar da nuvem primeiro para garantir sincronia global
     const cloudData = await loadFromCloud();
-    const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
+    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + getSyncKey();
+    const localTS = parseInt(localStorage.getItem(key + '_ts') || '0');
 
-    // Se a nuvem tiver dados, ou se for forçado, usa a nuvem (que é o dado compartilhado)
     if (cloudData && (forceCloud || cloudData.ts >= localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
       saveToLocalBackup(cloudData.ts);
-      console.log("Sincronização Global: Dados carregados da nuvem.");
+      console.log(`[SYNC] Rede Definitiva Ativa: ${getSyncKey()}`);
     } else {
-      // Fallback local apenas se a nuvem estiver inacessível
-      const localBackupBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const localBackupBase64 = localStorage.getItem(key);
       if (localBackupBase64) {
         const bytes = decodeBase64(localBackupBase64);
         db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
@@ -138,7 +155,6 @@ export const initDB = async (forceCloud = true) => {
       }
     }
 
-    // Estrutura do Banco
     db.run(`
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT);
       CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT);
@@ -162,7 +178,6 @@ export const initDB = async (forceCloud = true) => {
 
 export const checkForUpdates = async () => {
   const cloud = await loadFromCloud();
-  // Se a nuvem tem algo mais novo que o dispositivo atual, atualiza IMEDIATAMENTE
   if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
@@ -174,8 +189,6 @@ export const checkForUpdates = async () => {
   }
   return false;
 };
-
-// --- Funções de Operação (Sempre chamam syncToCloud após salvar) ---
 
 export const login = (username: string, pass: string): User | null => {
   if (!db) return null;
