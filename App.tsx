@@ -24,7 +24,7 @@ export const App: React.FC = () => {
     setExpenses(getExpenses());
   };
 
-  // Inicialização (Só roda se estiver logado e com CloudID)
+  // Inicialização
   React.useEffect(() => {
     if (isLogged) {
       const setup = async () => {
@@ -36,14 +36,17 @@ export const App: React.FC = () => {
     }
   }, [isLogged]);
 
-  // Monitoramento
+  // Monitoramento em tempo real (5 segundos)
   React.useEffect(() => {
     if (!isDbReady || !isLogged) return;
     const syncInterval = setInterval(async () => {
-      setIsSyncing(true);
-      if (await checkForUpdates()) refreshLocalData();
-      setIsSyncing(false);
-    }, 15000);
+      // Pequeno atraso visual para não incomodar, mas buscando dados
+      if (await checkForUpdates()) {
+        setIsSyncing(true);
+        refreshLocalData();
+        setTimeout(() => setIsSyncing(false), 2000);
+      }
+    }, 5000); // 5 segundos para maior reatividade
     return () => clearInterval(syncInterval);
   }, [isDbReady, isLogged]);
 
@@ -77,10 +80,10 @@ export const App: React.FC = () => {
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
       {isSyncing && (
-        <div className="fixed top-6 right-6 z-50 pointer-events-none">
-          <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-2xl">
-            <RefreshCw size={12} className="text-blue-400 animate-spin" />
-            <span className="text-[10px] font-black text-white uppercase tracking-tighter">Auto-Sync</span>
+        <div className="fixed top-6 right-6 z-[200] pointer-events-none">
+          <div className="bg-emerald-500 px-4 py-2 rounded-full border border-emerald-400 flex items-center gap-2 shadow-2xl animate-bounce">
+            <RefreshCw size={12} className="text-white animate-spin" />
+            <span className="text-[10px] font-black text-white uppercase tracking-tighter">Dados Atualizados!</span>
           </div>
         </div>
       )}

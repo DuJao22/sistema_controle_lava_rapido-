@@ -10,7 +10,6 @@ declare global {
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
-// Versão V7: Reset de estrutura para garantir usuários core
 const CLOUD_ID = 'LAVARAPIDO_PRO_V7_SECURITY_FIX'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
 const LOCAL_STORAGE_KEY = 'lavarapido_db_v7';
@@ -75,7 +74,11 @@ export const syncToCloud = async () => {
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
   try {
-    const response = await fetch(`${CLOUD_API_URL}?name=${CLOUD_ID}`);
+    // Adicionamos ?t=Date.now() para evitar que o navegador cacheie a resposta
+    const response = await fetch(`${CLOUD_API_URL}?name=${CLOUD_ID}&t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+    });
     const results = await response.json();
     if (Array.isArray(results) && results.length > 0) {
       const validEntries = results
@@ -101,9 +104,14 @@ export const initDB = async (forceCloud = false) => {
     const localBackupBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
     const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
 
+    // Se o dado da nuvem for mais recente ou se forçado, usa ele
     if (cloudData && (forceCloud || cloudData.ts > localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
+      // Atualiza o backup local com o que veio da nuvem
+      const base64 = encodeBase64(cloudData.data);
+      localStorage.setItem(LOCAL_STORAGE_KEY, base64);
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', cloudData.ts.toString());
     } else if (localBackupBase64 && !forceCloud) {
       const bytes = decodeBase64(localBackupBase64);
       db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
@@ -118,8 +126,6 @@ export const initDB = async (forceCloud = false) => {
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT);
     `);
 
-    // GARANTIA: Estes usuários DEVEM existir. 
-    // Em V7, forçamos o REPLACE para garantir que a senha '12345' funcione para João e Bianca
     const defaults = [
       ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
       ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
@@ -152,14 +158,12 @@ export const changePassword = async (userId: string, newPass: string) => {
   const p = newPass.trim();
   const currentUserId = localStorage.getItem('lavarapido_user_id');
 
-  // TRAVA DE SEGURANÇA: Se o alvo é o Master, apenas o Master logado pode alterar
   if (userId === 'admin-master-id' && currentUserId !== 'admin-master-id') {
     throw new Error('Apenas o Master pode alterar sua própria senha.');
   }
   
   db.run("UPDATE users SET password = ? WHERE id = ?", [p, userId]);
   
-  // Sincronia de IDs conhecidos
   const admins = ['dujao22', 'joao.adm', 'bianca.adm'];
   const userRes = db.exec("SELECT username FROM users WHERE id = ?", [userId]);
   if (userRes.length && userRes[0].values.length) {
@@ -253,13 +257,14 @@ export const deleteExpense = async (id: string) => {
 
 export const checkForUpdates = async () => {
   const cloud = await loadFromCloud();
+  // Se a nuvem tiver um timestamp maior que o nosso último registro local conhecido
   if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
-    saveToLocalBackup();
+    saveToLocalBackup(); // Mantém o backup local sincronizado
     return true;
   }
   return false;
