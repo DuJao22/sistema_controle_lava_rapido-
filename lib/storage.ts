@@ -11,11 +11,8 @@ let db: any = null;
 
 const DB_NAME = 'lava_rapido_sqlite';
 const STORE_NAME = 'sqlite_file';
-// ID Único para sincronização global (Alterado para evitar conflitos)
 const CLOUD_SYNC_ID = 'lavarapido_pro_v1_sync_shared_global';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-
-// --- Persistência Local (IndexedDB) ---
 
 const saveToIndexedDB = async (data: Uint8Array) => {
   try {
@@ -48,8 +45,6 @@ const loadFromIndexedDB = (): Promise<Uint8Array | null> => {
   });
 };
 
-// --- Persistência Global (Cloud Sync) ---
-
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
   const len = bytes.byteLength;
@@ -80,7 +75,6 @@ export const syncToCloud = async () => {
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
-
     await fetch(CLOUD_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,9 +92,7 @@ export const loadFromCloud = async (): Promise<Uint8Array | null> => {
   try {
     const response = await fetch(`${CLOUD_API_URL}?name=${CLOUD_SYNC_ID}`);
     const results = await response.json();
-    
     if (Array.isArray(results) && results.length > 0) {
-      // Filtrar apenas objetos que possuem a estrutura de dados esperada para evitar o erro atob
       const validEntries = results.filter(r => r.data && typeof r.data.sqlite === 'string' && r.data.sqlite.length > 100);
       if (validEntries.length > 0) {
         const latest = validEntries[validEntries.length - 1];
@@ -111,20 +103,6 @@ export const loadFromCloud = async (): Promise<Uint8Array | null> => {
     console.error("Falha ao ler da nuvem:", e);
   }
   return null;
-};
-
-// --- Inicialização ---
-
-const waitForSqlJs = (): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if (window.initSqlJs) { resolve(window.initSqlJs); return; }
-    let attempts = 0;
-    const interval = setInterval(() => {
-      attempts++;
-      if (window.initSqlJs) { clearInterval(interval); resolve(window.initSqlJs); }
-      else if (attempts >= 100) { clearInterval(interval); reject(new Error("Timeout SQL.js")); }
-    }, 50);
-  });
 };
 
 export const initDB = async () => {
@@ -154,22 +132,34 @@ export const initDB = async () => {
       );
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
-        freelancer REAL,
-        snacks REAL,
-        others REAL,
-        total REAL,
+        description TEXT,
+        value REAL,
         date TEXT
       );
     `);
     
+    // Migração para adicionar descrição se não existir
     try {
-      db.run("ALTER TABLE billings ADD COLUMN time TEXT DEFAULT '00:00'");
+      db.run("ALTER TABLE expenses ADD COLUMN description TEXT DEFAULT ''");
+      db.run("ALTER TABLE expenses ADD COLUMN value REAL DEFAULT 0");
     } catch (e) {}
 
   } catch (error) {
     console.error("Erro Database Init:", error);
     throw error;
   }
+};
+
+const waitForSqlJs = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if (window.initSqlJs) { resolve(window.initSqlJs); return; }
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (window.initSqlJs) { clearInterval(interval); resolve(window.initSqlJs); }
+      else if (attempts >= 100) { clearInterval(interval); reject(new Error("Timeout SQL.js")); }
+    }, 50);
+  });
 };
 
 const persist = async () => {
@@ -190,9 +180,7 @@ export const getBillings = (): Billing[] => {
       columns.forEach((col: string, i: number) => obj[col] = row[i]);
       return obj as Billing;
     });
-  } catch (e) {
-    return [];
-  }
+  } catch (e) { return []; }
 };
 
 export const saveBilling = async (billing: Billing) => {
@@ -222,21 +210,21 @@ export const getExpenses = (): Expense[] => {
     return res[0].values.map((row: any) => {
       const obj: any = {};
       columns.forEach((col: string, i: number) => obj[col] = row[i]);
+      // Fallback para campos antigos se necessário
+      if (obj.value === undefined && obj.total !== undefined) obj.value = obj.total;
       return obj as Expense;
     });
-  } catch (e) {
-    return [];
-  }
+  } catch (e) { return []; }
 };
 
 export const saveExpense = async (expense: Expense) => {
   if (!db) return;
   const id = expense.id || crypto.randomUUID();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO expenses (id, freelancer, snacks, others, total, date) 
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO expenses (id, description, value, date) 
+    VALUES (?, ?, ?, ?)
   `);
-  stmt.run([id, expense.freelancer, expense.snacks, expense.others, expense.total, expense.date]);
+  stmt.run([id, expense.description, expense.value, expense.date]);
   stmt.free();
   await persist();
 };

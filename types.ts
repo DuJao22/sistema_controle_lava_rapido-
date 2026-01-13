@@ -19,15 +19,13 @@ export interface Billing {
   paymentMethod: PaymentMethod;
   value: number;
   date: string;
-  time: string; // Adicionado horário
+  time: string;
 }
 
 export interface Expense {
   id: string;
-  freelancer: number;
-  snacks: number;
-  others: number;
-  total: number;
+  description: string;
+  value: number;
   date: string;
 }
 

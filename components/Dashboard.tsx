@@ -36,7 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ billings, expenses }) => {
 
   const stats = useMemo(() => {
     const totalB = filteredData.billings.reduce((sum, b) => sum + b.value, 0);
-    const totalE = filteredData.expenses.reduce((sum, e) => sum + e.total, 0);
+    const totalE = filteredData.expenses.reduce((sum, e) => sum + e.value, 0);
     const count = filteredData.billings.length;
     return {
       totalBilling: totalB,
@@ -56,7 +56,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ billings, expenses }) => {
     filteredData.expenses.forEach(e => {
       const date = e.date.split('T')[0];
       if (!daily[date]) daily[date] = { date, billing: 0, expenses: 0 };
-      daily[date].expenses += e.total;
+      daily[date].expenses += e.value;
     });
     return Object.values(daily).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData]);
