@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, Check, RefreshCw, Cloud, Globe } from 'lucide-react';
+import React, { useState } from 'react';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, RefreshCw, Globe } from 'lucide-react';
 import { changePassword, initDB } from '../lib/storage';
 
 interface LayoutProps {
@@ -12,7 +12,6 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
   const [userName, setUserName] = useState(localStorage.getItem('lavarapido_user_name') || '');
   const [userRole, setUserRole] = useState(localStorage.getItem('lavarapido_user_role') || '');
-  const [syncKey, setSyncKey] = useState(localStorage.getItem('lavarapido_sync_key') || '---');
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,7 +31,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     if (success) {
       window.location.reload(); 
     } else {
-      alert("Falha ao sincronizar com a rede. Verifique a internet.");
+      alert("Falha ao sincronizar com o servidor global.");
     }
     setIsGlobalSyncing(false);
   };
@@ -75,22 +74,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     <div className="flex min-h-screen bg-slate-50 font-sans">
       {/* Sidebar Desktop */}
       <aside className="hidden lg:flex w-72 bg-slate-900 text-white p-6 fixed h-full z-30 flex-col shadow-2xl">
-        <div className="flex items-center gap-3 mb-8 px-2">
+        <div className="flex items-center gap-3 mb-12 px-2">
           <div className="bg-gradient-to-br from-blue-400 to-blue-600 p-2.5 rounded-xl shadow-lg">
             <Car size={26} className="text-white" />
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight leading-none uppercase italic">Lava Rápido</h1>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Master Admin</span>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Global Pro</span>
           </div>
-        </div>
-
-        <div className="bg-blue-600/20 border border-blue-500/30 p-4 rounded-2xl mb-6 flex items-center gap-3">
-           <Globe size={18} className="text-blue-400" />
-           <div className="overflow-hidden">
-             <p className="text-[8px] font-black text-blue-300 uppercase tracking-widest leading-none mb-1">Rede Ativa</p>
-             <p className="text-xs font-black text-white truncate uppercase italic">{syncKey}</p>
-           </div>
         </div>
         
         <nav className="space-y-1.5 flex-1">
@@ -116,7 +107,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             className="w-full flex items-center justify-center gap-3 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-emerald-500/20 transition-all active:scale-95 group"
           >
             <RefreshCw size={16} className={isGlobalSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'} />
-            Sincronizar Rede
+            Sincronizar Dados
           </button>
 
           <div className="bg-slate-800/40 p-4 rounded-3xl border border-white/5">
@@ -141,12 +132,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
       <main className="flex-1 lg:ml-72 p-4 sm:p-6 lg:p-10 pb-24 lg:pb-10 w-full overflow-x-hidden">
         {/* Header Mobile */}
         <div className="lg:hidden flex items-center justify-between mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-           <div className="flex flex-col">
-              <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 italic">Rede: {syncKey}</span>
-              <div className="flex items-center gap-2">
-                <div className="bg-blue-600 p-1.5 rounded-lg"><Car size={16} className="text-white" /></div>
-                <h1 className="font-black text-slate-800 uppercase text-xs">Lava Rápido Pro</h1>
-              </div>
+           <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-1.5 rounded-lg"><Car size={16} className="text-white" /></div>
+              <h1 className="font-black text-slate-800 uppercase text-xs">Lava Rápido Pro</h1>
            </div>
            <div className="flex gap-2">
              <button onClick={handleGlobalSync} className="p-2 text-emerald-600 bg-emerald-50 rounded-xl">

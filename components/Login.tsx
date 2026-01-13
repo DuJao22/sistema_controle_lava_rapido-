@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, RefreshCw, Globe, CheckCircle2 } from 'lucide-react';
-import { login, initDB, getSyncKey } from '../lib/storage';
+import React, { useState } from 'react';
+import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, Globe } from 'lucide-react';
+import { login, initDB } from '../lib/storage';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -10,27 +10,19 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [syncKey, setSyncKey] = useState(getSyncKey());
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!syncKey.trim()) {
-      setError('A Chave da Empresa é obrigatória.');
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      localStorage.setItem('lavarapido_sync_key', syncKey.trim().toUpperCase());
-      
       const ready = await initDB(true);
       if (!ready) {
-        setError('Erro ao conectar à rede. Verifique sua conexão.');
+        setError('Erro ao conectar ao servidor global. Verifique sua conexão.');
         setLoading(false);
         return;
       }
@@ -43,7 +35,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         localStorage.setItem('lavarapido_user_role', user.role);
         onLoginSuccess(user);
       } else {
-        setError('Usuário ou senha incorretos nesta rede.');
+        setError('Usuário ou senha incorretos.');
       }
     } catch (err) {
       setError('Erro ao processar login.');
@@ -61,7 +53,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
           <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-            <Globe size={14} className="text-blue-500" /> Acesso Global Inteligente
+            <Globe size={14} className="text-blue-500" /> Sincronização em Tempo Real
           </p>
         </div>
 
@@ -74,26 +66,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           )}
 
           <form onSubmit={handleLogin} className="space-y-6">
-            <div className="bg-emerald-50 p-6 rounded-3xl border-2 border-emerald-100 mb-2 relative">
-              <div className="absolute top-4 right-4 text-emerald-500 animate-pulse">
-                <CheckCircle2 size={16} />
-              </div>
-              <label className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                Rede Detectada (Padrão)
-              </label>
-              <input
-                required
-                type="text"
-                placeholder="EX: LAVA_RAPIDO_CENTRAL"
-                value={syncKey}
-                onChange={(e) => setSyncKey(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white border-2 border-transparent focus:border-emerald-500 outline-none font-black text-emerald-900 transition-all placeholder:text-emerald-200 uppercase"
-              />
-              <p className="text-[8px] text-emerald-500 mt-2 font-bold uppercase leading-tight italic">
-                * Conectado automaticamente à sua rede master.
-              </p>
-            </div>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -145,7 +117,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </div>
         
         <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Rede Master • Global Sync Enabled
+          Rede Master Compartilhada • 2024
         </p>
       </div>
     </div>

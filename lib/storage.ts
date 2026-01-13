@@ -11,31 +11,14 @@ let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
 /**
- * CHAVE DEFINITIVA PADRÃO:
- * Todos que acessarem o link entrarão nesta rede automaticamente.
+ * CHAVE GLOBAL ÚNICA E IMUTÁVEL
+ * Esta chave garante que todos os usuários do sistema compartilhem o mesmo banco de dados.
  */
-const DEFAULT_SYNC_KEY = 'LAVA_RAPIDO_MASTER_PRO_V12'; 
+const GLOBAL_SYNC_KEY = 'LAVA_RAPIDO_PRO_UNIVERSAL_DATA_V1'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
 const LOCAL_STORAGE_KEY_PREFIX = 'lavarapido_db_v12';
 
-// Função para obter a chave da rede atual (URL > LocalStorage > Default)
-export const getSyncKey = () => {
-  // 1. Tenta pegar da URL (?key=SUA_CHAVE)
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlKey = urlParams.get('key');
-  if (urlKey) {
-    localStorage.setItem('lavarapido_sync_key', urlKey.toUpperCase());
-    return urlKey.toUpperCase();
-  }
-
-  // 2. Tenta pegar do LocalStorage
-  const storedKey = localStorage.getItem('lavarapido_sync_key');
-  if (storedKey) return storedKey;
-
-  // 3. Retorna a Chave Definitiva Padrão
-  localStorage.setItem('lavarapido_sync_key', DEFAULT_SYNC_KEY);
-  return DEFAULT_SYNC_KEY;
-};
+export const getSyncKey = () => GLOBAL_SYNC_KEY;
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -65,7 +48,7 @@ const saveToLocalBackup = (timestamp: number) => {
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
-    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + getSyncKey();
+    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + GLOBAL_SYNC_KEY;
     localStorage.setItem(key, base64Data);
     localStorage.setItem(key + '_ts', timestamp.toString());
   } catch (e) { }
@@ -73,7 +56,6 @@ const saveToLocalBackup = (timestamp: number) => {
 
 export const syncToCloud = async () => {
   if (!db) return false;
-  const syncKey = getSyncKey();
   try {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
@@ -85,7 +67,7 @@ export const syncToCloud = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: `LR_SYNC_${syncKey}`,
+        name: `LR_SYNC_${GLOBAL_SYNC_KEY}`,
         data: { sqlite: base64Data, timestamp: now, sender: localStorage.getItem('lavarapido_user_name') }
       })
     });
@@ -101,7 +83,6 @@ export const syncToCloud = async () => {
 };
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
-  const syncKey = getSyncKey();
   try {
     const response = await fetch(`${CLOUD_API_URL}?t=${Date.now()}`, {
       method: 'GET',
@@ -110,7 +91,7 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
     
     const results = await response.json();
     if (Array.isArray(results)) {
-      const prefix = `LR_SYNC_${syncKey}`;
+      const prefix = `LR_SYNC_${GLOBAL_SYNC_KEY}`;
       const myEntries = results
         .filter(r => r.name === prefix && r.data?.sqlite && r.data?.timestamp)
         .sort((a, b) => b.data.timestamp - a.data.timestamp);
@@ -136,14 +117,14 @@ export const initDB = async (forceCloud = true) => {
     });
 
     const cloudData = await loadFromCloud();
-    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + getSyncKey();
+    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + GLOBAL_SYNC_KEY;
     const localTS = parseInt(localStorage.getItem(key + '_ts') || '0');
 
     if (cloudData && (forceCloud || cloudData.ts >= localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
       saveToLocalBackup(cloudData.ts);
-      console.log(`[SYNC] Rede Definitiva Ativa: ${getSyncKey()}`);
+      console.log(`[SYNC] Banco Global Conectado`);
     } else {
       const localBackupBase64 = localStorage.getItem(key);
       if (localBackupBase64) {

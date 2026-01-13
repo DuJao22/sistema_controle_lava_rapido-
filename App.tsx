@@ -35,17 +35,15 @@ export const App: React.FC = () => {
       if (hasUpdates) {
         setIsSyncing(true);
         refreshLocalData();
-        console.log("Sincronização Global: Dados novos recebidos de outro dispositivo!");
         setTimeout(() => setIsSyncing(false), 3000);
       }
       setLastSyncStatus('online');
     } catch (e) {
-      console.error("Erro na verificação global:", e);
+      console.error("Erro na sincronização global:", e);
       setLastSyncStatus('error');
     }
   };
 
-  // Inicialização obrigatória via Nuvem
   React.useEffect(() => {
     if (isLogged) {
       const setup = async () => {
@@ -57,14 +55,11 @@ export const App: React.FC = () => {
     }
   }, [isLogged]);
 
-  // Monitoramento constante para o computador do João
   React.useEffect(() => {
     if (!isDbReady || !isLogged) return;
 
-    // Verifica a nuvem a cada 5 segundos
     const interval = setInterval(performSyncCheck, 5000);
 
-    // Verifica a nuvem sempre que o João clicar na aba ou voltar para o sistema
     const handleFocus = () => performSyncCheck();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', performSyncCheck);
@@ -87,9 +82,9 @@ export const App: React.FC = () => {
           <Loader2 className="w-20 h-20 text-blue-500 animate-spin" />
           <Globe className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white w-8 h-8 opacity-50" />
         </div>
-        <div className="text-center">
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Conectando à Rede Master</h2>
-          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Buscando dados globais atualizados...</p>
+        <div className="text-center px-6">
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter">Sincronizando Banco Global</h2>
+          <p className="text-blue-400 font-bold text-[10px] mt-3 uppercase tracking-[0.3em] animate-pulse italic">Baixando dados compartilhados da nuvem...</p>
         </div>
       </div>
     );
@@ -113,7 +108,7 @@ export const App: React.FC = () => {
         {isSyncing && (
           <div className="bg-emerald-600 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-2xl animate-in slide-in-from-right duration-500 border border-emerald-400">
              <CheckCircle size={14} className="text-white" />
-             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Dados Sincronizados!</span>
+             <span className="text-[9px] font-black text-white uppercase tracking-widest italic">Dados Atualizados!</span>
           </div>
         )}
         
@@ -125,8 +120,8 @@ export const App: React.FC = () => {
              {lastSyncStatus === 'online' ? <Wifi size={14} /> : 
               lastSyncStatus === 'syncing' ? <RefreshCw size={14} className="animate-spin" /> : <CloudOff size={14} />}
              <span className="text-[8px] font-black uppercase tracking-tighter">
-               {lastSyncStatus === 'online' ? 'Global Online' : 
-                lastSyncStatus === 'syncing' ? 'Baixando...' : 'Sem Rede'}
+               {lastSyncStatus === 'online' ? 'Global Link OK' : 
+                lastSyncStatus === 'syncing' ? 'Baixando...' : 'Sem Internet'}
              </span>
           </div>
         </div>
