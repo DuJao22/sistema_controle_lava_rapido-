@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon, Lock, X, Check } from 'lucide-react';
+import { changePassword } from '../lib/storage';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,12 +12,39 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
   const [userName, setUserName] = useState(localStorage.getItem('lavarapido_user_name') || '');
   const [userRole, setUserRole] = useState(localStorage.getItem('lavarapido_user_role') || '');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChanging, setIsChanging] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('lavarapido_user_id');
     localStorage.removeItem('lavarapido_user_name');
     localStorage.removeItem('lavarapido_user_role');
     window.location.reload();
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      alert('As senhas não coincidem!');
+      return;
+    }
+    const userId = localStorage.getItem('lavarapido_user_id');
+    if (!userId) return;
+
+    setIsChanging(true);
+    try {
+      await changePassword(userId, newPassword);
+      alert('Senha alterada com sucesso!');
+      setIsPasswordModalOpen(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      alert('Erro ao alterar senha.');
+    } finally {
+      setIsChanging(false);
+    }
   };
 
   const menuItems = [
@@ -72,12 +100,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
                 <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{userRole}</p>
               </div>
             </div>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
-            >
-              <LogOut size={12} /> Sair
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={() => setIsPasswordModalOpen(true)}
+                className="flex items-center justify-center gap-2 py-2.5 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                title="Alterar Senha"
+              >
+                <Lock size={12} /> Senha
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="flex items-center justify-center gap-2 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+              >
+                <LogOut size={12} /> Sair
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -87,19 +124,67 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         {/* Header Mobile */}
         <div className="lg:hidden flex items-center justify-between mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
            <div className="flex flex-col">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">@{userName}</span>
+              <span className="text-[9px] font-black text-slate-700 uppercase tracking-widest mb-1">@{userName}</span>
               <div className="flex items-center gap-2">
                 <div className="bg-blue-600 p-1.5 rounded-lg"><Car size={16} className="text-white" /></div>
                 <h1 className="font-black text-slate-800 uppercase text-xs">Lava Rápido</h1>
               </div>
            </div>
-           <button onClick={handleLogout} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><LogOut size={18} /></button>
+           <div className="flex gap-2">
+             <button onClick={() => setIsPasswordModalOpen(true)} className="p-2 text-slate-600 bg-slate-100 rounded-xl"><Lock size={18} /></button>
+             <button onClick={handleLogout} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><LogOut size={18} /></button>
+           </div>
         </div>
 
         <div className="max-w-7xl mx-auto">
           {children}
         </div>
       </main>
+
+      {/* Modal Alterar Senha */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-xl font-black text-slate-800 uppercase italic">Alterar Senha</h3>
+              <button onClick={() => setIsPasswordModalOpen(false)} className="p-2 text-slate-400 bg-white shadow-sm rounded-full hover:text-slate-600 transition-colors"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleChangePassword} className="p-8 space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-700 uppercase mb-2 tracking-widest">Nova Senha</label>
+                  <input 
+                    required 
+                    type="password"
+                    placeholder="••••••••"
+                    value={newPassword} 
+                    onChange={e => setNewPassword(e.target.value)} 
+                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-700 uppercase mb-2 tracking-widest">Confirmar Senha</label>
+                  <input 
+                    required 
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword} 
+                    onChange={e => setConfirmPassword(e.target.value)} 
+                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400" 
+                  />
+                </div>
+              </div>
+              <button 
+                disabled={isChanging}
+                type="submit" 
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs tracking-[0.2em] hover:bg-slate-800 shadow-xl flex items-center justify-center gap-2 transform active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {isChanging ? 'ATUALIZANDO...' : <><Check size={18} /> ATUALIZAR SENHA</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Nav Mobile */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-2 py-2 flex justify-around items-center z-40 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)]">

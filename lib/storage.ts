@@ -125,21 +125,26 @@ export const initDB = async () => {
       );
     `);
 
-    // Criar o admin específico solicitado se não houver usuários
-    const userCount = db.exec("SELECT COUNT(*) FROM users")[0].values[0][0];
+    // Criar usuários iniciais se o banco estiver vazio
+    const userCountRes = db.exec("SELECT COUNT(*) FROM users");
+    const userCount = userCountRes[0].values[0][0];
+    
     if (userCount === 0) {
-      db.run("INSERT INTO users VALUES (?, ?, ?, ?, ?)", [
-        crypto.randomUUID(), 
-        'Dujao22', 
-        '30031936Vo.', 
-        'Admin Master', 
-        'admin'
-      ]);
+      const usersToInsert = [
+        [crypto.randomUUID(), 'Dujao22', '30031936Vo.', 'Admin Master', 'admin'],
+        [crypto.randomUUID(), 'joao.adm', '12345', 'João', 'admin'],
+        [crypto.randomUUID(), 'bianca.adm', '12345', 'Bianca', 'admin']
+      ];
+
+      for (const u of usersToInsert) {
+        db.run("INSERT INTO users VALUES (?, ?, ?, ?, ?)", u);
+      }
       await syncToCloud();
     }
 
     return true;
   } catch (error) {
+    console.error("Erro initDB:", error);
     return false;
   }
 };
@@ -163,6 +168,12 @@ export const login = (username: string, pass: string): User | null => {
   if (!res.length || !res[0].values.length) return null;
   const row = res[0].values[0];
   return { id: row[0], username: row[1], name: row[3], role: row[4] } as User;
+};
+
+export const changePassword = async (userId: string, newPass: string) => {
+  if (!db) return;
+  db.run("UPDATE users SET password = ? WHERE id = ?", [newPass, userId]);
+  await syncToCloud();
 };
 
 export const getUsers = (): User[] => {
@@ -207,7 +218,7 @@ export const saveBilling = async (b: Billing) => {
 
 export const deleteBilling = async (id: string) => {
   if (!db) return;
-  db.run("DELETE FROM billings WHERE id = ?", [id]);
+  db.run("DELETE FROM billing WHERE id = ?", [id]);
   await syncToCloud();
 };
 

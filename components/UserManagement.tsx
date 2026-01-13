@@ -27,7 +27,12 @@ export const UserManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string, username: string) => {
-    if (username === 'Dujao22') return alert('O admin principal não pode ser removido.');
+    // Proteger administradores fixos de serem deletados por acidente
+    const protectedUsers = ['Dujao22', 'joao.adm', 'bianca.adm'];
+    if (protectedUsers.includes(username)) {
+      return alert('Este usuário administrador é protegido e não pode ser removido.');
+    }
+    
     if (confirm(`Remover usuário ${username}?`)) {
       await deleteUser(id);
       load();
@@ -61,7 +66,7 @@ export const UserManagement: React.FC = () => {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">@{u.username}</p>
               </div>
             </div>
-            {u.username !== 'Dujao22' && (
+            {!['Dujao22', 'joao.adm', 'bianca.adm'].includes(u.username) && (
               <button 
                 onClick={() => handleDelete(u.id, u.username)}
                 className="p-3 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
