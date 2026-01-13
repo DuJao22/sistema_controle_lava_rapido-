@@ -125,20 +125,23 @@ export const initDB = async () => {
       );
     `);
 
-    // Criar usuários iniciais se o banco estiver vazio
-    const userCountRes = db.exec("SELECT COUNT(*) FROM users");
-    const userCount = userCountRes[0].values[0][0];
-    
-    if (userCount === 0) {
-      const usersToInsert = [
-        [crypto.randomUUID(), 'Dujao22', '30031936Vo.', 'Admin Master', 'admin'],
-        [crypto.randomUUID(), 'joao.adm', '12345', 'João', 'admin'],
-        [crypto.randomUUID(), 'bianca.adm', '12345', 'Bianca', 'admin']
-      ];
+    // Garantir que os administradores padrão existam (INSERT OR IGNORE evita duplicatas pelo username UNIQUE)
+    const usersToInsert = [
+      [crypto.randomUUID(), 'Dujao22', '30031936Vo.', 'Admin Master', 'admin'],
+      [crypto.randomUUID(), 'joao.adm', '12345', 'João', 'admin'],
+      [crypto.randomUUID(), 'bianca.adm', '12345', 'Bianca', 'admin']
+    ];
 
-      for (const u of usersToInsert) {
-        db.run("INSERT INTO users VALUES (?, ?, ?, ?, ?)", u);
+    let changesMade = false;
+    for (const u of usersToInsert) {
+      const check = db.exec("SELECT COUNT(*) FROM users WHERE username = ?", [u[1]]);
+      if (check[0].values[0][0] === 0) {
+        db.run("INSERT INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", u);
+        changesMade = true;
       }
+    }
+
+    if (changesMade) {
       await syncToCloud();
     }
 
@@ -218,7 +221,7 @@ export const saveBilling = async (b: Billing) => {
 
 export const deleteBilling = async (id: string) => {
   if (!db) return;
-  db.run("DELETE FROM billing WHERE id = ?", [id]);
+  db.run("DELETE FROM billings WHERE id = ?", [id]);
   await syncToCloud();
 };
 
