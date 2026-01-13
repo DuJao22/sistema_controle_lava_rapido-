@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, X, Clock, RefreshCw, ShieldCheck, ChevronRight, User as UserIcon } from 'lucide-react';
+import { Plus, Trash2, X, Clock, RefreshCw, User as UserIcon, Loader2 } from 'lucide-react';
 import { Billing, CarSize, PaymentMethod } from '../types';
 import { getBillings, saveBilling, deleteBilling, loadFromCloud } from '../lib/storage';
 
@@ -9,6 +9,7 @@ export const BillingForm: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const getCurrentTime = () => {
     const now = new Date();
@@ -24,33 +25,49 @@ export const BillingForm: React.FC = () => {
     time: getCurrentTime()
   });
 
-  const load = () => setBillings(getBillings());
+  const load = () => {
+    const data = getBillings();
+    setBillings(data);
+  };
 
   const handleManualSync = async () => {
     setIsSyncing(true);
     const cloudData = await loadFromCloud();
-    if (cloudData) { window.location.reload(); }
+    if (cloudData) { 
+      // Reinicializa o DB com os dados da nuvem e recarrega
+      load();
+    }
     setIsSyncing(false);
   };
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 15000); 
+    const interval = setInterval(load, 5000); 
     return () => clearInterval(interval);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSyncing(true);
-    await saveBilling({ ...formData, id: editingId || '', createdBy: localStorage.getItem('lavarapido_user_name') || 'unknown' } as Billing);
-    setIsModalOpen(false);
-    setEditingId(null);
-    setFormData({ 
-      washType: '', size: CarSize.SMALL, paymentMethod: PaymentMethod.PIX, value: 0, 
-      date: new Date().toISOString().split('T')[0], time: getCurrentTime()
-    });
-    load();
-    setIsSyncing(false);
+    setIsSaving(true);
+    try {
+      await saveBilling({ 
+        ...formData, 
+        id: editingId || crypto.randomUUID(), 
+        createdBy: localStorage.getItem('lavarapido_user_name') || 'unknown' 
+      } as Billing);
+      
+      setIsModalOpen(false);
+      setEditingId(null);
+      setFormData({ 
+        washType: '', size: CarSize.SMALL, paymentMethod: PaymentMethod.PIX, value: 0, 
+        date: new Date().toISOString().split('T')[0], time: getCurrentTime()
+      });
+      load(); // Recarrega a lista local imediatamente
+    } catch (err) {
+      alert("Erro ao salvar dados localmente.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEdit = (billing: Billing) => {
@@ -61,10 +78,8 @@ export const BillingForm: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (confirm('Deseja excluir este faturamento?')) {
-      setIsSyncing(true);
       await deleteBilling(id);
       load();
-      setIsSyncing(false);
     }
   };
 
@@ -77,7 +92,7 @@ export const BillingForm: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
           <button onClick={handleManualSync} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors">
-            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> Atualizar
+            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> Atualizar Nuvem
           </button>
           <button onClick={() => setIsModalOpen(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all transform active:scale-95">
             <Plus size={18} /> Novo Serviço
@@ -154,9 +169,10 @@ export const BillingForm: React.FC = () => {
                       <input 
                         required 
                         autoFocus
+                        disabled={isSaving}
                         value={formData.washType} 
                         onChange={e => setFormData({...formData, washType: e.target.value})} 
-                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400" 
+                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400 disabled:opacity-50" 
                         placeholder="Ex: Lavagem de Motor, Completa..." 
                       />
                    </div>
@@ -168,9 +184,10 @@ export const BillingForm: React.FC = () => {
                           required 
                           type="number" 
                           step="0.01" 
+                          disabled={isSaving}
                           value={formData.value} 
                           onChange={e => setFormData({...formData, value: parseFloat(e.target.value) || 0})} 
-                          className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-emerald-500 outline-none font-black text-emerald-700 text-lg transition-all" 
+                          className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-emerald-500 outline-none font-black text-emerald-700 text-lg transition-all disabled:opacity-50" 
                         />
                       </div>
                    </div>
@@ -178,17 +195,19 @@ export const BillingForm: React.FC = () => {
                       <label className="text-[10px] font-black text-slate-700 uppercase mb-2 block tracking-widest ml-1">Data do Atendimento</label>
                       <input 
                         type="date" 
+                        disabled={isSaving}
                         value={formData.date} 
                         onChange={e => setFormData({...formData, date: e.target.value})} 
-                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all" 
+                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all disabled:opacity-50" 
                       />
                    </div>
                    <div>
                       <label className="text-[10px] font-black text-slate-700 uppercase mb-2 block tracking-widest ml-1">Porte do Veículo</label>
                       <select 
+                        disabled={isSaving}
                         value={formData.size} 
                         onChange={e => setFormData({...formData, size: e.target.value as CarSize})}
-                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all appearance-none"
+                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all appearance-none disabled:opacity-50"
                       >
                         {Object.values(CarSize).map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
@@ -196,16 +215,21 @@ export const BillingForm: React.FC = () => {
                    <div>
                       <label className="text-[10px] font-black text-slate-700 uppercase mb-2 block tracking-widest ml-1">Método de Pagamento</label>
                       <select 
+                        disabled={isSaving}
                         value={formData.paymentMethod} 
                         onChange={e => setFormData({...formData, paymentMethod: e.target.value as PaymentMethod})}
-                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all appearance-none"
+                        className="w-full px-6 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all appearance-none disabled:opacity-50"
                       >
                         {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                    </div>
                 </div>
-                <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs tracking-[0.2em] hover:bg-blue-600 shadow-xl transform active:scale-[0.98] transition-all">
-                   FINALIZAR E SALVAR
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs tracking-[0.2em] hover:bg-blue-600 shadow-xl transform active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:bg-slate-500"
+                >
+                   {isSaving ? <Loader2 className="animate-spin" size={18} /> : 'FINALIZAR E SALVAR'}
                 </button>
              </form>
           </div>

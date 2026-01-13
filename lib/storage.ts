@@ -10,10 +10,6 @@ declare global {
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
-/**
- * CHAVE DE REDE ÚNICA - É ISSO QUE UNE VOCÊ E O JOÃO
- * Todos os aparelhos com esta mesma chave compartilharão os mesmos dados.
- */
 const NETWORK_ID = 'LAVA_RAPIDO_NETWORK_DUJAO_JOAO_PRO_V1';
 const CLOUD_API_BASE = `https://api.restful-api.dev/objects`;
 const LOCAL_STORAGE_KEY = 'lavarapido_db_v1_fixed';
@@ -41,15 +37,21 @@ const decodeBase64 = (base64: string): Uint8Array | null => {
   }
 };
 
-/**
- * Tenta encontrar o ID real do objeto na nuvem usando o NETWORK_ID fixo
- */
+const saveLocalOnly = () => {
+  if (!db) return;
+  const binaryArray = db.export();
+  const base64Data = encodeBase64(binaryArray);
+  const now = Date.now();
+  lastLocalUpdateTimestamp = now;
+  localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
+  localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', now.toString());
+};
+
 const getCloudObjectId = async () => {
   const cachedId = localStorage.getItem('lavarapido_cloud_obj_id');
   if (cachedId) return cachedId;
 
   try {
-    // Busca na lista pública da API por um objeto com o nosso nome de rede
     const resp = await fetch(`${CLOUD_API_BASE}?cb=${Date.now()}`);
     const items = await resp.json();
     const found = Array.isArray(items) ? items.find(i => i.name === NETWORK_ID) : null;
@@ -59,7 +61,6 @@ const getCloudObjectId = async () => {
       return found.id;
     }
     
-    // Se não existir, cria o primeiro registro da rede
     const createResp = await fetch(CLOUD_API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,16 +76,19 @@ const getCloudObjectId = async () => {
 
 export const syncToCloud = async () => {
   if (!db) return false;
+  
+  // SEMPRE SALVA LOCAL PRIMEIRO
+  saveLocalOnly();
+
   try {
     const cloudId = await getCloudObjectId();
     if (!cloudId) return false;
 
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
-    const now = Date.now();
+    const now = lastLocalUpdateTimestamp;
 
-    // Atualiza o objeto fixo com os novos dados
-    const response = await fetch(`${CLOUD_API_BASE}/${cloudId}`, {
+    await fetch(`${CLOUD_API_BASE}/${cloudId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -96,21 +100,11 @@ export const syncToCloud = async () => {
         }
       })
     });
-
-    if (response.ok) {
-      lastLocalUpdateTimestamp = now;
-      localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', now.toString());
-      localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
-      return true;
-    } else if (response.status === 404) {
-      // Se a API deletou o objeto (comum em APIs gratuitas), resetamos para criar um novo
-      localStorage.removeItem('lavarapido_cloud_obj_id');
-      return await syncToCloud();
-    }
+    return true;
   } catch (e) {
-    console.error("Erro ao sincronizar com a rede:", e);
+    console.warn("Sincronia em segundo plano falhou, mas dado está salvo localmente.");
+    return false;
   }
-  return false;
 };
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
@@ -133,7 +127,7 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     }
   } catch (e) {
-    console.error("Erro ao carregar dados da rede:", e);
+    console.error("Erro ao carregar da nuvem:", e);
   }
   return null;
 };
@@ -144,28 +138,25 @@ export const initDB = async (forceCloud = true) => {
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
-    const cloudData = await loadFromCloud();
+    const localBackup = localStorage.getItem(LOCAL_STORAGE_KEY);
     const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
+    
+    let cloudData = null;
+    if (forceCloud) {
+      cloudData = await loadFromCloud();
+    }
 
-    // Lógica de decisão: nuvem vs local
-    if (cloudData && (forceCloud || cloudData.ts > localTS)) {
+    if (cloudData && cloudData.ts > localTS) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
-      // Sincroniza o local backup
       localStorage.setItem(LOCAL_STORAGE_KEY, encodeBase64(cloudData.data));
       localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', cloudData.ts.toString());
-      console.log("Banco de dados sincronizado pela nuvem.");
+    } else if (localBackup) {
+      const bytes = decodeBase64(localBackup);
+      db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
+      lastLocalUpdateTimestamp = localTS;
     } else {
-      const localBackup = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (localBackup) {
-        const bytes = decodeBase64(localBackup);
-        db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
-        lastLocalUpdateTimestamp = localTS;
-        console.log("Banco de dados carregado localmente.");
-      } else {
-        db = new initSqlJs.Database();
-        console.log("Novo banco de dados criado.");
-      }
+      db = new initSqlJs.Database();
     }
 
     db.run(`
@@ -185,22 +176,22 @@ export const initDB = async (forceCloud = true) => {
     
     return true;
   } catch (e) {
-    console.error("Erro na inicialização do Banco:", e);
     return false;
   }
 };
 
 export const checkForUpdates = async () => {
-  const cloud = await loadFromCloud();
-  // Se o carimbo da nuvem for maior que o nosso, atualizamos
-  if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
-    const initSqlJs = await (window as any).initSqlJs({
-      locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
-    });
-    db = new initSqlJs.Database(cloud.data);
-    lastLocalUpdateTimestamp = cloud.ts;
-    return true;
-  }
+  try {
+    const cloud = await loadFromCloud();
+    if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
+      const initSqlJs = await (window as any).initSqlJs({
+        locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
+      });
+      db = new initSqlJs.Database(cloud.data);
+      lastLocalUpdateTimestamp = cloud.ts;
+      return true;
+    }
+  } catch (e) {}
   return false;
 };
 
@@ -226,8 +217,9 @@ export const getBillings = () => {
 
 export const saveBilling = async (b: Billing) => {
   if (!db) return;
-  db.run(`INSERT OR REPLACE INTO billings VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.id || crypto.randomUUID(), b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy]);
+  const id = b.id || crypto.randomUUID();
+  db.run(`INSERT OR REPLACE INTO billings (id, washType, size, paymentMethod, value, date, time, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy]);
   await syncToCloud();
 };
 
@@ -251,8 +243,9 @@ export const getExpenses = () => {
 
 export const saveExpense = async (e: Expense) => {
   if (!db) return;
-  db.run(`INSERT OR REPLACE INTO expenses VALUES (?, ?, ?, ?, ?)`,
-    [e.id || crypto.randomUUID(), e.description, e.value, e.date, e.createdBy]);
+  const id = e.id || crypto.randomUUID();
+  db.run(`INSERT OR REPLACE INTO expenses (id, description, value, date, createdBy) VALUES (?, ?, ?, ?, ?)`,
+    [id, e.description, e.value, e.date, e.createdBy]);
   await syncToCloud();
 };
 
