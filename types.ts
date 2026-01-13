@@ -12,6 +12,14 @@ export enum PaymentMethod {
   DEBIT = 'Cartão Débito'
 }
 
+export interface User {
+  id: string;
+  username: string;
+  password?: string;
+  role: 'admin' | 'staff';
+  name: string;
+}
+
 export interface Billing {
   id: string;
   washType: string;
@@ -20,6 +28,7 @@ export interface Billing {
   value: number;
   date: string;
   time: string;
+  createdBy: string; // Nome do usuário que criou
 }
 
 export interface Expense {
@@ -27,6 +36,7 @@ export interface Expense {
   description: string;
   value: number;
   date: string;
+  createdBy: string; // Nome do usuário que criou
 }
 
 export interface FinancialSummary {

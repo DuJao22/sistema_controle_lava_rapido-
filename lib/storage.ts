@@ -1,5 +1,5 @@
 
-import { Billing, Expense, CarSize, PaymentMethod } from '../types';
+import { Billing, Expense, CarSize, PaymentMethod, User } from '../types';
 
 declare global {
   interface Window {
@@ -9,12 +9,9 @@ declare global {
 
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
-// ID fixo para este Lava Jato - Em um sistema real, isso viria de um login.
-const CLOUD_ID = localStorage.getItem('lavarapido_cloud_id') || `lavajato_pro_${Math.random().toString(36).substring(7)}`;
-localStorage.setItem('lavarapido_cloud_id', CLOUD_ID);
 
-const DB_NAME = 'lava_rapido_sqlite';
-const STORE_NAME = 'sqlite_file';
+// ID fixo para o estabelecimento único
+const CLOUD_ID = 'LAVARAPIDO_PRO_SISTEMA_UNICO';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
 
 const encodeBase64 = (bytes: Uint8Array): string => {
@@ -55,14 +52,14 @@ export const syncToCloud = async () => {
         data: { 
           sqlite: base64Data, 
           timestamp: now,
-          updatedBy: navigator.userAgent.substring(0, 20)
+          updatedBy: localStorage.getItem('lavarapido_user_name') || 'unknown'
         }
       })
     });
     lastLocalUpdateTimestamp = now;
     localStorage.setItem('lavarapido_last_sync', new Date(now).toISOString());
   } catch (e) {
-    console.error("Falha ao subir para nuvem:", e);
+    console.error("Erro ao sincronizar:", e);
   }
 };
 
@@ -72,8 +69,8 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
     const results = await response.json();
     if (Array.isArray(results) && results.length > 0) {
       const validEntries = results
-        .filter(r => r.data && typeof r.data.sqlite === 'string' && r.data.timestamp)
-        .sort((a, b) => b.data.timestamp - a.data.timestamp); // Pega o mais recente de fato
+        .filter(r => r.data && r.data.sqlite && r.data.timestamp)
+        .sort((a, b) => b.data.timestamp - a.data.timestamp);
 
       if (validEntries.length > 0) {
         const latest = validEntries[0];
@@ -82,29 +79,33 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     }
   } catch (e) {
-    console.warn("Nuvem indisponível ou vazia.");
+    console.warn("Sem dados na nuvem.");
   }
   return null;
 };
 
 export const initDB = async () => {
-  if (db) return;
   try {
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
 
     const cloudData = await loadFromCloud();
-    let initialBytes: Uint8Array | null = null;
-
     if (cloudData) {
-      initialBytes = cloudData.data;
+      db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
+    } else {
+      db = new initSqlJs.Database();
     }
 
-    db = initialBytes ? new initSqlJs.Database(initialBytes) : new initSqlJs.Database();
-
     db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        name TEXT,
+        role TEXT
+      );
       CREATE TABLE IF NOT EXISTS billings (
         id TEXT PRIMARY KEY,
         washType TEXT,
@@ -112,57 +113,95 @@ export const initDB = async () => {
         paymentMethod TEXT,
         value REAL,
         date TEXT,
-        time TEXT
+        time TEXT,
+        createdBy TEXT
       );
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
         description TEXT,
         value REAL,
-        date TEXT
+        date TEXT,
+        createdBy TEXT
       );
     `);
+
+    // Criar o admin específico solicitado se não houver usuários
+    const userCount = db.exec("SELECT COUNT(*) FROM users")[0].values[0][0];
+    if (userCount === 0) {
+      db.run("INSERT INTO users VALUES (?, ?, ?, ?, ?)", [
+        crypto.randomUUID(), 
+        'Dujao22', 
+        '30031936Vo.', 
+        'Admin Master', 
+        'admin'
+      ]);
+      await syncToCloud();
+    }
+
+    return true;
   } catch (error) {
-    console.error("Erro Crítico no Banco:", error);
+    return false;
   }
 };
 
 export const checkForUpdates = async (): Promise<boolean> => {
   const cloud = await loadFromCloud();
   if (cloud && cloud.ts > lastLocalUpdateTimestamp) {
-    console.log("Nova versão detectada na nuvem. Atualizando...");
     const initSqlJs = await (window as any).initSqlJs({
       locateFile: (file: string) => `https://unpkg.com/sql.js@1.10.3/dist/${file}`
     });
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
-    return true; // Indica que houve atualização
+    return true;
   }
   return false;
 };
 
-export const getBillings = (): Billing[] => {
-  if (!db) return [];
-  try {
-    const res = db.exec("SELECT * FROM billings ORDER BY date DESC, time DESC");
-    if (!res.length) return [];
-    const columns = res[0].columns;
-    return res[0].values.map((row: any) => {
-      const obj: any = {};
-      columns.forEach((col: string, i: number) => obj[col] = row[i]);
-      return obj as Billing;
-    });
-  } catch (e) { return []; }
+export const login = (username: string, pass: string): User | null => {
+  if (!db) return null;
+  const res = db.exec("SELECT * FROM users WHERE username = ? AND password = ?", [username, pass]);
+  if (!res.length || !res[0].values.length) return null;
+  const row = res[0].values[0];
+  return { id: row[0], username: row[1], name: row[3], role: row[4] } as User;
 };
 
-export const saveBilling = async (billing: Billing) => {
+export const getUsers = (): User[] => {
+  if (!db) return [];
+  const res = db.exec("SELECT id, username, name, role FROM users");
+  if (!res.length) return [];
+  return res[0].values.map((row: any) => ({ id: row[0], username: row[1], name: row[2], role: row[3] } as User));
+};
+
+export const saveUser = async (user: User) => {
   if (!db) return;
-  const id = billing.id || crypto.randomUUID();
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO billings (id, washType, size, paymentMethod, value, date, time) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run([id, billing.washType, billing.size, billing.paymentMethod, billing.value, billing.date, billing.time]);
-  stmt.free();
+  db.run("INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", 
+    [user.id || crypto.randomUUID(), user.username, user.password, user.name, user.role]);
+  await syncToCloud();
+};
+
+export const deleteUser = async (id: string) => {
+  if (!db) return;
+  db.run("DELETE FROM users WHERE id = ?", [id]);
+  await syncToCloud();
+};
+
+export const getBillings = (): Billing[] => {
+  if (!db) return [];
+  const res = db.exec("SELECT * FROM billings ORDER BY date DESC, time DESC");
+  if (!res.length) return [];
+  const cols = res[0].columns;
+  return res[0].values.map((row: any) => {
+    const obj: any = {};
+    cols.forEach((c, i) => obj[c] = row[i]);
+    return obj;
+  });
+};
+
+export const saveBilling = async (b: Billing) => {
+  if (!db) return;
+  const creator = localStorage.getItem('lavarapido_user_name') || 'Sistema';
+  db.run(`INSERT OR REPLACE INTO billings VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.id || crypto.randomUUID(), b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy || creator]);
   await syncToCloud();
 };
 
@@ -174,27 +213,21 @@ export const deleteBilling = async (id: string) => {
 
 export const getExpenses = (): Expense[] => {
   if (!db) return [];
-  try {
-    const res = db.exec("SELECT * FROM expenses ORDER BY date DESC");
-    if (!res.length) return [];
-    const columns = res[0].columns;
-    return res[0].values.map((row: any) => {
-      const obj: any = {};
-      columns.forEach((col: string, i: number) => obj[col] = row[i]);
-      return obj as Expense;
-    });
-  } catch (e) { return []; }
+  const res = db.exec("SELECT * FROM expenses ORDER BY date DESC");
+  if (!res.length) return [];
+  const cols = res[0].columns;
+  return res[0].values.map((row: any) => {
+    const obj: any = {};
+    cols.forEach((c, i) => obj[c] = row[i]);
+    return obj;
+  });
 };
 
-export const saveExpense = async (expense: Expense) => {
+export const saveExpense = async (e: Expense) => {
   if (!db) return;
-  const id = expense.id || crypto.randomUUID();
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO expenses (id, description, value, date) 
-    VALUES (?, ?, ?, ?)
-  `);
-  stmt.run([id, expense.description, expense.value, expense.date]);
-  stmt.free();
+  const creator = localStorage.getItem('lavarapido_user_name') || 'Sistema';
+  db.run(`INSERT OR REPLACE INTO expenses VALUES (?, ?, ?, ?, ?)`,
+    [e.id || crypto.randomUUID(), e.description, e.value, e.date, e.createdBy || creator]);
   await syncToCloud();
 };
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Cloud, ShieldCheck, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Receipt, TrendingDown, ClipboardList, Car, Users, LogOut, Shield, User as UserIcon } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,15 +9,15 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
-  const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('lavarapido_last_sync'));
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [userName, setUserName] = useState(localStorage.getItem('lavarapido_user_name') || '');
+  const [userRole, setUserRole] = useState(localStorage.getItem('lavarapido_user_role') || '');
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLastSync(localStorage.getItem('lavarapido_last_sync'));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const handleLogout = () => {
+    localStorage.removeItem('lavarapido_user_id');
+    localStorage.removeItem('lavarapido_user_name');
+    localStorage.removeItem('lavarapido_user_role');
+    window.location.reload();
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
@@ -25,6 +25,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     { id: 'expenses', label: 'Gastos', icon: TrendingDown },
     { id: 'reports', label: 'Relatórios', icon: ClipboardList },
   ];
+
+  if (userRole === 'admin') {
+    menuItems.push({ id: 'users', label: 'Equipe', icon: Users });
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
@@ -36,7 +40,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight leading-none uppercase italic">Lava Rápido</h1>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Cloud Ativa</span>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Master Admin</span>
           </div>
         </div>
         
@@ -58,15 +62,22 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         </nav>
 
         <div className="mt-auto space-y-4 pt-6 border-t border-slate-800/50">
-          <div className="bg-slate-800/40 p-5 rounded-3xl border border-white/5 relative overflow-hidden">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizado</span>
+          <div className="bg-slate-800/40 p-4 rounded-3xl border border-white/5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-xl ${userRole === 'admin' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-400'}`}>
+                {userRole === 'admin' ? <Shield size={16} /> : <UserIcon size={16} />}
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-xs font-black truncate">{userName}</p>
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{userRole}</p>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase">Último Backup</p>
-            <p className="text-xs text-slate-200 font-black">
-              {lastSync ? new Date(lastSync).toLocaleTimeString('pt-BR') : 'Conectando...'}
-            </p>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
+            >
+              <LogOut size={12} /> Sair
+            </button>
           </div>
         </div>
       </aside>
@@ -75,16 +86,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
       <main className="flex-1 lg:ml-72 p-4 sm:p-6 lg:p-10 pb-24 lg:pb-10 w-full overflow-x-hidden">
         {/* Header Mobile */}
         <div className="lg:hidden flex items-center justify-between mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Car size={18} className="text-white" />
-            </div>
-            <h1 className="font-black text-slate-800 uppercase text-sm tracking-tighter">Lava Rápido Pro</h1>
-          </div>
-          <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-             <span className="text-[9px] font-black text-slate-400 uppercase">Cloud Online</span>
-          </div>
+           <div className="flex flex-col">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">@{userName}</span>
+              <div className="flex items-center gap-2">
+                <div className="bg-blue-600 p-1.5 rounded-lg"><Car size={16} className="text-white" /></div>
+                <h1 className="font-black text-slate-800 uppercase text-xs">Lava Rápido</h1>
+              </div>
+           </div>
+           <button onClick={handleLogout} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><LogOut size={18} /></button>
         </div>
 
         <div className="max-w-7xl mx-auto">
@@ -98,16 +107,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all min-w-[70px] ${
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all min-w-[60px] ${
               activeTab === item.id ? 'text-blue-600' : 'text-slate-400'
             }`}
           >
-            <div className={`p-1.5 rounded-lg transition-colors ${activeTab === item.id ? 'bg-blue-50' : ''}`}>
-              <item.icon size={22} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-            </div>
-            <span className={`text-[10px] font-bold ${activeTab === item.id ? 'opacity-100' : 'opacity-60'}`}>
-              {item.label}
-            </span>
+            <item.icon size={20} />
+            <span className="text-[9px] font-bold uppercase">{item.label}</span>
           </button>
         ))}
       </nav>
