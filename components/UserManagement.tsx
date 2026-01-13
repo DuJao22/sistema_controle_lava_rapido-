@@ -1,12 +1,14 @@
 
+import { UserPlus, Trash2, Shield, User as UserIcon, X, Check, Key, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Trash2, Shield, User as UserIcon, X, Check, Key } from 'lucide-react';
 import { User } from '../types';
 import { getUsers, saveUser, deleteUser, changePassword } from '../lib/storage';
 
 export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -14,39 +16,70 @@ export const UserManagement: React.FC = () => {
     role: 'staff' as 'admin' | 'staff'
   });
 
+  const showNotify = (msg: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   const load = () => setUsers(getUsers());
 
   useEffect(() => { load(); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveUser({ ...formData, id: crypto.randomUUID() });
-    setIsModalOpen(false);
-    setFormData({ username: '', password: '', name: '', role: 'staff' });
-    load();
+    try {
+      await saveUser({ ...formData, id: crypto.randomUUID() });
+      showNotify(`Usuário ${formData.name} criado com sucesso!`);
+      setIsModalOpen(false);
+      setFormData({ username: '', password: '', name: '', role: 'staff' });
+      load();
+    } catch (err) {
+      showNotify('Erro ao criar usuário.', 'error');
+    }
   };
 
   const handleResetPassword = async (userId: string, userName: string) => {
     if (confirm(`Deseja resetar a senha de ${userName} para "12345"?`)) {
-      await changePassword(userId, '12345');
-      alert('Senha resetada com sucesso para: 12345');
+      setResettingId(userId);
+      try {
+        await changePassword(userId, '12345');
+        showNotify(`Senha de ${userName} resetada para "12345"!`);
+      } catch (err) {
+        showNotify('Erro ao resetar senha.', 'error');
+      } finally {
+        setResettingId(null);
+        load();
+      }
     }
   };
 
   const handleDelete = async (id: string, username: string) => {
     const protectedUsers = ['dujao22', 'joao.adm', 'bianca.adm'];
     if (protectedUsers.includes(username.toLowerCase())) {
-      return alert('Este usuário administrador é protegido e não pode ser removido.');
+      return showNotify('Este administrador não pode ser removido.', 'error');
     }
     
     if (confirm(`Remover usuário ${username}?`)) {
-      await deleteUser(id);
-      load();
+      try {
+        await deleteUser(id);
+        showNotify('Usuário removido.');
+        load();
+      } catch (e) {
+        showNotify('Erro ao remover.', 'error');
+      }
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[110] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top duration-300 ${notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+          {notification.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+          <span className="text-xs font-black uppercase tracking-widest">{notification.msg}</span>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-black text-slate-800 uppercase italic tracking-tighter">Gerenciar Equipe</h2>
@@ -73,19 +106,20 @@ export const UserManagement: React.FC = () => {
               </div>
             </div>
             
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+            <div className="flex items-center gap-1 lg:opacity-0 group-hover:opacity-100 transition-all">
               <button 
+                disabled={resettingId === u.id}
                 onClick={() => handleResetPassword(u.id, u.name)}
-                className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                title="Resetar Senha"
+                className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all disabled:opacity-50"
+                title="Resetar Senha para 12345"
               >
-                <Key size={18} />
+                {resettingId === u.id ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
               </button>
               
               {!['dujao22', 'joao.adm', 'bianca.adm'].includes(u.username.toLowerCase()) && (
                 <button 
                   onClick={() => handleDelete(u.id, u.username)}
-                  className="p-3 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                  className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                 >
                   <Trash2 size={18} />
                 </button>
