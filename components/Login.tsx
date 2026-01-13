@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, RefreshCw } from 'lucide-react';
-import { login, initDB, loadFromCloud } from '../lib/storage';
+import { login, initDB } from '../lib/storage';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -21,7 +21,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      await initDB();
+      const ready = await initDB();
+      if (!ready) {
+        setError('Erro ao conectar ao banco de dados.');
+        setLoading(false);
+        return;
+      }
+
       const user = login(username, password);
       
       if (user) {
@@ -42,17 +48,21 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
-      await initDB(); // Isso força o recarregamento da nuvem
-      alert('Dados sincronizados com sucesso! Tente o login novamente.');
+      const success = await initDB(true); 
+      if (success) {
+        alert('Sistema Reparado! Tente entrar como joao.adm ou bianca.adm com a senha 12345.');
+      } else {
+        alert('Não foi possível sincronizar com a nuvem.');
+      }
     } catch (e) {
-      alert('Erro ao sincronizar.');
+      alert('Erro na sincronização forçada.');
     } finally {
       setIsSyncing(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 sm:p-6">
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 sm:p-6 text-slate-900">
       <div className="w-full max-w-md space-y-8 animate-in fade-in zoom-in duration-500">
         <div className="text-center space-y-4">
           <div className="inline-flex bg-blue-600 p-4 rounded-3xl shadow-xl shadow-blue-500/20 mb-2">
@@ -64,7 +74,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl space-y-8 relative overflow-hidden">
           {error && (
-            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-bold uppercase animate-shake">
+            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-shake">
               <AlertCircle size={18} />
               {error}
             </div>
@@ -126,13 +136,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               className="flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 hover:text-blue-600 transition-colors tracking-widest"
             >
               <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
-              Sincronizar novos usuários
+              Problemas com login? Clique aqui para Reparar
             </button>
           </div>
         </div>
         
         <p className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Versão 2.6.0 • Gestão Privada
+          Versão 2.7.0 • Gestão Privada
         </p>
       </div>
     </div>

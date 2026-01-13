@@ -10,9 +10,10 @@ declare global {
 let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
-const CLOUD_ID = 'LAVARAPIDO_PRO_SISTEMA_MASTER_V3'; // ID Único atualizado para evitar conflitos
+// Versão V7: Reset de estrutura para garantir usuários core
+const CLOUD_ID = 'LAVARAPIDO_PRO_V7_SECURITY_FIX'; 
 const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY = 'lavarapido_db_backup_v3';
+const LOCAL_STORAGE_KEY = 'lavarapido_db_v7';
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -39,10 +40,15 @@ const decodeBase64 = (base64: string): Uint8Array | null => {
 
 const saveToLocalBackup = () => {
   if (!db) return;
-  const binaryArray = db.export();
-  const base64Data = encodeBase64(binaryArray);
-  localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
-  localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', Date.now().toString());
+  try {
+    const binaryArray = db.export();
+    const base64Data = encodeBase64(binaryArray);
+    const ts = Date.now();
+    localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', ts.toString());
+  } catch (e) {
+    console.error("Erro backup local:", e);
+  }
 };
 
 export const syncToCloud = async () => {
@@ -52,6 +58,7 @@ export const syncToCloud = async () => {
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
     const now = Date.now();
+    
     await fetch(CLOUD_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,7 +69,7 @@ export const syncToCloud = async () => {
     });
     lastLocalUpdateTimestamp = now;
   } catch (e) {
-    console.warn("Erro sincronia nuvem.");
+    console.warn("Nuvem indisponível.");
   }
 };
 
@@ -94,10 +101,10 @@ export const initDB = async (forceCloud = false) => {
     const localBackupBase64 = localStorage.getItem(LOCAL_STORAGE_KEY);
     const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
 
-    if (cloudData && (forceCloud || cloudData.ts >= localTS)) {
+    if (cloudData && (forceCloud || cloudData.ts > localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
-    } else if (localBackupBase64) {
+    } else if (localBackupBase64 && !forceCloud) {
       const bytes = decodeBase64(localBackupBase64);
       db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
       lastLocalUpdateTimestamp = localTS;
@@ -111,22 +118,19 @@ export const initDB = async (forceCloud = false) => {
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT);
     `);
 
-    // Garantia de admins fixos
+    // GARANTIA: Estes usuários DEVEM existir. 
+    // Em V7, forçamos o REPLACE para garantir que a senha '12345' funcione para João e Bianca
     const defaults = [
       ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
       ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
       ['bianca-adm-id', 'bianca.adm', '12345', 'Bianca', 'admin']
     ];
 
-    let changed = false;
     for (const u of defaults) {
-      const exists = db.exec("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", [u[1]]);
-      if (!exists.length || !exists[0].values.length) {
-        db.run("INSERT INTO users VALUES (?, ?, ?, ?, ?)", u);
-        changed = true;
-      }
+      db.run("INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", u);
     }
-    if (changed) await syncToCloud();
+    
+    saveToLocalBackup();
     return true;
   } catch (e) {
     return false;
@@ -135,43 +139,61 @@ export const initDB = async (forceCloud = false) => {
 
 export const login = (username: string, pass: string): User | null => {
   if (!db) return null;
-  const cleanUser = username.trim().toLowerCase();
-  const cleanPass = pass.trim();
-  const res = db.exec("SELECT * FROM users WHERE LOWER(username) = ? AND password = ?", [cleanUser, cleanPass]);
+  const u = username.trim().toLowerCase();
+  const p = pass.trim();
+  const res = db.exec("SELECT id, username, name, role FROM users WHERE LOWER(username) = ? AND password = ?", [u, p]);
   if (!res.length || !res[0].values.length) return null;
   const r = res[0].values[0];
-  return { id: r[0], username: r[1], name: r[3], role: r[4] };
+  return { id: r[0], username: r[1], name: r[2], role: r[3] } as User;
 };
 
 export const changePassword = async (userId: string, newPass: string) => {
   if (!db) return;
-  // Tenta pelo ID e garante que o registro existe
-  db.run("UPDATE users SET password = ? WHERE id = ?", [newPass.trim(), userId]);
-  // Fallback: Se for um dos admins padrão, garante pelo username também
-  const users = [['joao-adm-id', 'joao.adm'], ['bianca-adm-id', 'bianca.adm']];
-  const found = users.find(u => u[0] === userId);
-  if (found) {
-    db.run("UPDATE users SET password = ? WHERE LOWER(username) = ?", [newPass.trim(), found[1]]);
+  const p = newPass.trim();
+  const currentUserId = localStorage.getItem('lavarapido_user_id');
+
+  // TRAVA DE SEGURANÇA: Se o alvo é o Master, apenas o Master logado pode alterar
+  if (userId === 'admin-master-id' && currentUserId !== 'admin-master-id') {
+    throw new Error('Apenas o Master pode alterar sua própria senha.');
   }
+  
+  db.run("UPDATE users SET password = ? WHERE id = ?", [p, userId]);
+  
+  // Sincronia de IDs conhecidos
+  const admins = ['dujao22', 'joao.adm', 'bianca.adm'];
+  const userRes = db.exec("SELECT username FROM users WHERE id = ?", [userId]);
+  if (userRes.length && userRes[0].values.length) {
+    const un = userRes[0].values[0][0].toLowerCase();
+    if (admins.includes(un)) {
+      db.run("UPDATE users SET password = ? WHERE LOWER(username) = ?", [p, un]);
+    }
+  }
+
+  saveToLocalBackup();
   await syncToCloud();
 };
 
 export const getUsers = (): User[] => {
   if (!db) return [];
   const res = db.exec("SELECT id, username, name, role FROM users");
-  return res.length ? res[0].values.map((r: any) => ({ id: r[0], username: r[1], name: r[2], role: r[3] })) : [];
+  if (!res.length) return [];
+  return res[0].values.map((r: any) => ({ id: r[0], username: r[1], name: r[2], role: r[3] } as User));
 };
 
 export const saveUser = async (user: User) => {
   if (!db) return;
-  db.run("INSERT OR REPLACE INTO users VALUES (?, ?, ?, ?, ?)", 
+  db.run("INSERT OR REPLACE INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)", 
     [user.id || crypto.randomUUID(), user.username.toLowerCase().trim(), user.password?.trim(), user.name, user.role]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
 export const deleteUser = async (id: string) => {
   if (!db) return;
+  const coreIds = ['admin-master-id', 'joao-adm-id', 'bianca-adm-id'];
+  if (coreIds.includes(id)) return;
   db.run("DELETE FROM users WHERE id = ?", [id]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
@@ -191,12 +213,14 @@ export const saveBilling = async (b: Billing) => {
   if (!db) return;
   db.run(`INSERT OR REPLACE INTO billings VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.id || crypto.randomUUID(), b.washType, b.size, b.paymentMethod, b.value, b.date, b.time, b.createdBy]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
 export const deleteBilling = async (id: string) => {
   if (!db) return;
   db.run("DELETE FROM billings WHERE id = ?", [id]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
@@ -216,12 +240,14 @@ export const saveExpense = async (e: Expense) => {
   if (!db) return;
   db.run(`INSERT OR REPLACE INTO expenses VALUES (?, ?, ?, ?, ?)`,
     [e.id || crypto.randomUUID(), e.description, e.value, e.date, e.createdBy]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
 export const deleteExpense = async (id: string) => {
   if (!db) return;
   db.run("DELETE FROM expenses WHERE id = ?", [id]);
+  saveToLocalBackup();
   await syncToCloud();
 };
 
@@ -233,6 +259,7 @@ export const checkForUpdates = async () => {
     });
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
+    saveToLocalBackup();
     return true;
   }
   return false;
