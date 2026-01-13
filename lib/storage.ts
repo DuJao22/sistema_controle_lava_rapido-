@@ -11,13 +11,15 @@ let db: any = null;
 let lastLocalUpdateTimestamp = 0;
 
 /**
- * CHAVE GLOBAL ÚNICA - Alterada para garantir exclusividade total no servidor de sincronização
+ * CONFIGURAÇÃO DE SINCRONIZAÇÃO GLOBAL MESTRE
+ * Usamos um ID fixo para que todos os dispositivos editem o MESMO objeto na API.
  */
-const GLOBAL_SYNC_KEY = 'LAVA_RAPIDO_PRO_SYNC_FINAL_2024_V102'; 
-const CLOUD_API_URL = `https://api.restful-api.dev/objects`;
-const LOCAL_STORAGE_KEY_PREFIX = 'lavarapido_db_v102';
+const MASTER_SYNC_ID = 'lavarapido_universal_v2_fix'; // Nome de referência
+const CLOUD_API_BASE = `https://api.restful-api.dev/objects`;
+const LOCAL_STORAGE_KEY = 'lavarapido_db_master_v2';
 
-export const getSyncKey = () => GLOBAL_SYNC_KEY;
+// Este ID será recuperado ou criado na primeira execução
+let serverObjectId = localStorage.getItem('lavarapido_server_id') || '';
 
 const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = '';
@@ -42,58 +44,82 @@ const decodeBase64 = (base64: string): Uint8Array | null => {
   }
 };
 
-const saveToLocalBackup = (timestamp: number) => {
-  if (!db) return;
+/**
+ * Busca o ID do objeto mestre na API se não tivermos ele localmente
+ */
+const findOrCreateMasterObject = async () => {
   try {
-    const binaryArray = db.export();
-    const base64Data = encodeBase64(binaryArray);
-    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + GLOBAL_SYNC_KEY;
-    localStorage.setItem(key, base64Data);
-    localStorage.setItem(key + '_ts', timestamp.toString());
-  } catch (e) { }
+    const resp = await fetch(`${CLOUD_API_BASE}?cb=${Date.now()}`);
+    const items = await resp.json();
+    const found = Array.isArray(items) ? items.find(i => i.name === MASTER_SYNC_ID) : null;
+    
+    if (found) {
+      serverObjectId = found.id;
+      localStorage.setItem('lavarapido_server_id', found.id);
+      return found.id;
+    } else {
+      // Criar o objeto mestre pela primeira vez
+      const createResp = await fetch(CLOUD_API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: MASTER_SYNC_ID, data: { sqlite: '', timestamp: 0 } })
+      });
+      const newItem = await createResp.json();
+      serverObjectId = newItem.id;
+      localStorage.setItem('lavarapido_server_id', newItem.id);
+      return newItem.id;
+    }
+  } catch (e) {
+    return null;
+  }
 };
 
 export const syncToCloud = async () => {
   if (!db) return false;
   try {
+    const id = serverObjectId || await findOrCreateMasterObject();
+    if (!id) return false;
+
     const binaryArray = db.export();
     const base64Data = encodeBase64(binaryArray);
     const now = Date.now();
-    
-    // Forçamos o salvamento local antes da nuvem
-    saveToLocalBackup(now);
 
-    const response = await fetch(CLOUD_API_URL, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
-      },
+    const response = await fetch(`${CLOUD_API_BASE}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: `LR_SYNC_${GLOBAL_SYNC_KEY}`,
+        name: MASTER_SYNC_ID,
         data: { 
           sqlite: base64Data, 
-          timestamp: now, 
-          sender: localStorage.getItem('lavarapido_user_name') || 'unknown' 
+          timestamp: now,
+          sender: localStorage.getItem('lavarapido_user_name') || 'unknown'
         }
       })
     });
-    
+
     if (response.ok) {
       lastLocalUpdateTimestamp = now;
-      console.log(`[SYNC] Enviado para Nuvem: ${new Date(now).toLocaleTimeString()}`);
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', now.toString());
+      localStorage.setItem(LOCAL_STORAGE_KEY, base64Data);
       return true;
+    } else if (response.status === 404) {
+      // Se o objeto sumiu, resetamos o ID para recriar no próximo ciclo
+      serverObjectId = '';
+      localStorage.removeItem('lavarapido_server_id');
+      return await syncToCloud();
     }
   } catch (e) {
-    console.error("Erro na Sincronização Global:", e);
+    console.error("Erro Crítico Sincronização:", e);
   }
   return false;
 };
 
 export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | null> => {
   try {
-    // Cache busting: adicionamos um parâmetro aleatório para evitar resultados cacheados do navegador
-    const response = await fetch(`${CLOUD_API_URL}?cb=${Date.now()}`, {
+    const id = serverObjectId || await findOrCreateMasterObject();
+    if (!id) return null;
+
+    const response = await fetch(`${CLOUD_API_BASE}/${id}?cb=${Date.now()}`, {
       method: 'GET',
       headers: { 
         'Cache-Control': 'no-cache',
@@ -101,25 +127,17 @@ export const loadFromCloud = async (): Promise<{data: Uint8Array, ts: number} | 
       }
     });
     
-    const results = await response.json();
-    if (Array.isArray(results)) {
-      const prefix = `LR_SYNC_${GLOBAL_SYNC_KEY}`;
-      
-      // Filtramos e pegamos o item com o maior timestamp (mais recente)
-      const myEntries = results
-        .filter(r => r.name === prefix && r.data?.sqlite && r.data?.timestamp)
-        .sort((a, b) => b.data.timestamp - a.data.timestamp);
-        
-      if (myEntries.length > 0) {
-        const latest = myEntries[0];
-        const bytes = decodeBase64(latest.data.sqlite);
-        if (bytes) {
-          return { data: bytes, ts: latest.data.timestamp };
-        }
+    if (!response.ok) return null;
+    
+    const result = await response.json();
+    if (result && result.data?.sqlite) {
+      const bytes = decodeBase64(result.data.sqlite);
+      if (bytes) {
+        return { data: bytes, ts: result.data.timestamp || 0 };
       }
     }
   } catch (e) {
-    console.error("Erro ao buscar dados na nuvem:", e);
+    console.error("Erro ao baixar da nuvem:", e);
   }
   return null;
 };
@@ -131,25 +149,22 @@ export const initDB = async (forceCloud = true) => {
     });
 
     const cloudData = await loadFromCloud();
-    const key = LOCAL_STORAGE_KEY_PREFIX + '_' + GLOBAL_SYNC_KEY;
-    const localTS = parseInt(localStorage.getItem(key + '_ts') || '0');
+    const localTS = parseInt(localStorage.getItem(LOCAL_STORAGE_KEY + '_ts') || '0');
 
-    // Sempre prefira os dados da nuvem se existirem e forem mais novos (ou se forceCloud for true)
     if (cloudData && (forceCloud || cloudData.ts > localTS)) {
       db = new initSqlJs.Database(cloudData.data);
       lastLocalUpdateTimestamp = cloudData.ts;
-      saveToLocalBackup(cloudData.ts);
-      console.log(`[SYNC] Dados da Nuvem Carregados. TS: ${cloudData.ts}`);
+      // Salva backup local
+      localStorage.setItem(LOCAL_STORAGE_KEY, encodeBase64(cloudData.data));
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_ts', cloudData.ts.toString());
     } else {
-      const localBackupBase64 = localStorage.getItem(key);
-      if (localBackupBase64) {
-        const bytes = decodeBase64(localBackupBase64);
+      const localBackup = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (localBackup) {
+        const bytes = decodeBase64(localBackup);
         db = bytes ? new initSqlJs.Database(bytes) : new initSqlJs.Database();
         lastLocalUpdateTimestamp = localTS;
-        console.log(`[SYNC] Dados Locais Carregados.`);
       } else {
         db = new initSqlJs.Database();
-        console.log(`[SYNC] Novo Banco de Dados Criado.`);
       }
     }
 
@@ -159,6 +174,7 @@ export const initDB = async (forceCloud = true) => {
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT);
     `);
 
+    // Usuários padrão sempre presentes
     const defaults = [
       ['admin-master-id', 'dujao22', '30031936Vo.', 'Admin Master', 'admin'],
       ['joao-adm-id', 'joao.adm', '12345', 'João', 'admin'],
@@ -182,13 +198,13 @@ export const checkForUpdates = async () => {
     });
     db = new initSqlJs.Database(cloud.data);
     lastLocalUpdateTimestamp = cloud.ts;
-    saveToLocalBackup(cloud.ts);
-    console.log(`[SYNC] Banco atualizado pela nuvem automaticamente.`);
+    console.log(`[SYNC] Sincronia Global Realizada.`);
     return true;
   }
   return false;
 };
 
+// Funções de negócio chamam syncToCloud após cada operação
 export const login = (username: string, pass: string): User | null => {
   if (!db) return null;
   const res = db.exec("SELECT id, username, name, role FROM users WHERE LOWER(username) = ? AND password = ?", [username.trim().toLowerCase(), pass.trim()]);
