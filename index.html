@@ -12,6 +12,9 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- SQL.js (SQLite WebAssembly) - Usando unpkg para maior confiabilidade -->
+    <script src="https://unpkg.com/sql.js@1.10.3/dist/sql-wasm.js"></script>
+
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -26,9 +29,9 @@
         background: #f8fafc;
       }
       #root:empty::after {
-        content: "Carregando sistema...";
+        content: "Inicializando SQLite3...";
         font-weight: 600;
-        color: #64748b;
+        color: #3b82f6;
         animation: pulse 2s infinite;
       }
       @keyframes pulse {
@@ -52,18 +55,18 @@
     </script>
 
     <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
-    "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom"
-  }
-}
-</script>
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react/": "https://esm.sh/react@18.2.0/",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
+        "recharts": "https://esm.sh/recharts@2.10.3?external=react,react-dom"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

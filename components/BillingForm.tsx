@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, X, Search, Filter } from 'lucide-react';
-import { Billing, CarSize } from '../types';
+import { Plus, Trash2, X, Search, Filter, CreditCard } from 'lucide-react';
+import { Billing, CarSize, PaymentMethod } from '../types';
 import { getBillings, saveBilling, deleteBilling } from '../lib/storage';
 
 export const BillingForm: React.FC = () => {
@@ -10,9 +10,9 @@ export const BillingForm: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Omit<Billing, 'id'>>({
-    car: '',
-    plate: '',
+    washType: '',
     size: CarSize.SMALL,
+    paymentMethod: PaymentMethod.PIX,
     value: 0,
     date: new Date().toISOString().split('T')[0]
   });
@@ -28,7 +28,7 @@ export const BillingForm: React.FC = () => {
     saveBilling({ ...formData, id: editingId || '' } as Billing);
     setIsModalOpen(false);
     setEditingId(null);
-    setFormData({ car: '', plate: '', size: CarSize.SMALL, value: 0, date: new Date().toISOString().split('T')[0] });
+    setFormData({ washType: '', size: CarSize.SMALL, paymentMethod: PaymentMethod.PIX, value: 0, date: new Date().toISOString().split('T')[0] });
     load();
   };
 
@@ -65,9 +65,9 @@ export const BillingForm: React.FC = () => {
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Carro</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Placa</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Serviço/Lavagem</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Porte</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Pagamento</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Data</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Valor</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 uppercase tracking-wider text-right">Ações</th>
@@ -83,8 +83,7 @@ export const BillingForm: React.FC = () => {
               ) : (
                 billings.map((b) => (
                   <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-900">{b.car}</td>
-                    <td className="px-6 py-4 text-slate-600 font-mono text-sm uppercase">{b.plate}</td>
+                    <td className="px-6 py-4 font-medium text-slate-900">{b.washType}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                         b.size === CarSize.SMALL ? 'bg-blue-100 text-blue-700' :
@@ -94,6 +93,12 @@ export const BillingForm: React.FC = () => {
                         {b.size}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                       <div className="flex items-center gap-2 text-slate-600">
+                         <CreditCard size={14} className="text-slate-400" />
+                         <span className="text-sm">{b.paymentMethod}</span>
+                       </div>
+                    </td>
                     <td className="px-6 py-4 text-slate-600">{new Date(b.date).toLocaleDateString('pt-BR')}</td>
                     <td className="px-6 py-4 font-bold text-emerald-600">R$ {b.value.toFixed(2)}</td>
                     <td className="px-6 py-4 text-right">
@@ -102,7 +107,7 @@ export const BillingForm: React.FC = () => {
                           onClick={() => handleEdit(b)}
                           className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                         >
-                          <Plus size={18} className="rotate-45" /> {/* Using Plus rotated as a pencil alternative */}
+                          <Plus size={18} className="rotate-45" />
                         </button>
                         <button 
                           onClick={() => handleDelete(b.id)}
@@ -136,25 +141,14 @@ export const BillingForm: React.FC = () => {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Veículo</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tipo de Lavagem / Serviço</label>
                   <input
                     required
                     type="text"
-                    value={formData.car}
-                    onChange={(e) => setFormData({ ...formData, car: e.target.value })}
+                    value={formData.washType}
+                    onChange={(e) => setFormData({ ...formData, washType: e.target.value })}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                    placeholder="Ex: Honda Civic"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Placa</label>
-                  <input
-                    required
-                    type="text"
-                    value={formData.plate}
-                    onChange={(e) => setFormData({ ...formData, plate: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all uppercase"
-                    placeholder="ABC-1234"
+                    placeholder="Ex: Lavagem Simples, Geral, Higienização..."
                   />
                 </div>
                 <div>
@@ -165,6 +159,16 @@ export const BillingForm: React.FC = () => {
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
                   >
                     {Object.values(CarSize).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Pagamento</label>
+                  <select
+                    value={formData.paymentMethod}
+                    onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as PaymentMethod })}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
@@ -184,7 +188,7 @@ export const BillingForm: React.FC = () => {
                     type="number"
                     step="0.01"
                     value={formData.value}
-                    onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) || 0 })}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>

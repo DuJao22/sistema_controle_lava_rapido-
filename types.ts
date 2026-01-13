@@ -5,11 +5,18 @@ export enum CarSize {
   LARGE = 'Grande'
 }
 
+export enum PaymentMethod {
+  PIX = 'PIX',
+  CASH = 'Dinheiro',
+  CREDIT = 'Cartão Crédito',
+  DEBIT = 'Cartão Débito'
+}
+
 export interface Billing {
   id: string;
-  car: string;
-  plate: string;
+  washType: string;
   size: CarSize;
+  paymentMethod: PaymentMethod;
   value: number;
   date: string;
 }

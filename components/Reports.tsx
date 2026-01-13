@@ -37,7 +37,6 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
       totalB,
       totalE,
       profit: totalB - totalE,
-      ticketMedio: filteredData.billings.length ? totalB / filteredData.billings.length : 0,
       totalServices: filteredData.billings.length
     };
   }, [filteredData]);
@@ -51,12 +50,12 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
     csvContent += `Responsável:;João Layón\n\n`;
 
     csvContent += "--- 1. ENTRADAS (FATURAMENTO) ---\n";
-    csvContent += "Data;Veículo;Placa;Porte;Valor Bruto (R$)\n";
+    csvContent += "Data;Lavagem;Pagamento;Porte;Valor Bruto (R$)\n";
     
     filteredData.billings.forEach(b => {
       const formattedDate = new Date(b.date).toLocaleDateString('pt-BR');
       const formattedValue = b.value.toFixed(2).replace('.', ',');
-      csvContent += `${formattedDate};${b.car};${b.plate.toUpperCase()};${b.size};${formattedValue}\n`;
+      csvContent += `${formattedDate};${b.washType};${b.paymentMethod};${b.size};${formattedValue}\n`;
     });
 
     csvContent += `TOTAL ENTRADAS:;;;;R$ ${summary.totalB.toFixed(2).replace('.', ',')}\n\n`;
@@ -77,8 +76,6 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
 
     csvContent += "--- 3. BALANÇO E PERFORMANCE ---\n";
     csvContent += `LUCRO LÍQUIDO:;R$ ${summary.profit.toFixed(2).replace('.', ',')}\n`;
-    csvContent += `MARGEM LÍQUIDA:;${summary.totalB ? ((summary.profit / summary.totalB) * 100).toFixed(2).replace('.', ',') : '0'}%\n`;
-    csvContent += `TICKET MÉDIO:;R$ ${summary.ticketMedio.toFixed(2).replace('.', ',')}\n`;
     csvContent += `TOTAL DE SERVIÇOS:;${summary.totalServices}\n\n`;
     
     csvContent += "Sistema desenvolvido por João Layón";
@@ -151,21 +148,17 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-blue-500">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Volume</p>
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Serviços Realizados</p>
           <p className="text-2xl font-black text-slate-900">{summary.totalServices}</p>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-indigo-500">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Ticket Médio</p>
-          <p className="text-2xl font-black text-indigo-600">R$ {summary.ticketMedio.toFixed(2)}</p>
-        </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Custos</p>
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Custos Totais</p>
           <p className="text-2xl font-black text-rose-500">R$ {summary.totalE.toFixed(2)}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Lucro</p>
+          <p className="text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Lucro Líquido</p>
           <p className={`text-2xl font-black ${summary.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
              R$ {summary.profit.toFixed(2)}
           </p>
@@ -197,11 +190,11 @@ export const Reports: React.FC<ReportsProps> = ({ billings, expenses }) => {
                   </div>
                   <div>
                     <p className="font-bold text-slate-800 leading-none mb-1">
-                      {item.isExpense ? 'Débito: Despesas Gerais' : `Crédito: ${item.car}`}
+                      {item.isExpense ? 'Débito: Despesas Gerais' : `Crédito: ${item.washType}`}
                     </p>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-slate-400">{new Date(item.date).toLocaleDateString('pt-BR')}</span>
-                      {!item.isExpense && <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{item.plate}</span>}
+                      {!item.isExpense && <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{item.paymentMethod}</span>}
                     </div>
                   </div>
                 </div>
