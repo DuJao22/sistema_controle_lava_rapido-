@@ -1,32 +1,20 @@
 
-# Lava Rápido Pro - Sistema de Gestão Financeira
+# Lava Rápido Pro - Sistema de Gestão Financeira v3.0
 
-Sistema completo para gestão de faturamento e despesas de lava rápido.
+Sistema profissional com sincronização global em tempo real.
 
-## Tecnologias
-- **Next.js/React**
-- **TypeScript**
-- **Tailwind CSS**
-- **Recharts** (Visualização de dados)
-- **Lucide React** (Ícones)
-- **LocalStorage** (Persistência simples de dados)
+## Tecnologias e Infraestrutura
+- **Frontend:** React + TypeScript + Tailwind CSS.
+- **Banco de Dados:** SQLite3 rodando via WebAssembly (SQL.js).
+- **Sincronização:** Híbrida (Local-First com Cloud Backup via REST API).
+- **Hospedagem:** SPA em ambiente Serverless.
 
-## Funcionalidades
-- Dashboard com KPIs e gráficos financeiros.
-- Gestão de Faturamento (Carro, Placa, Porte, Valor, Data).
-- Gestão de Despesas (Freelancers, Lanches, Outros).
-- Relatórios detalhados com extrato consolidado.
+## Funcionalidades Globais
+- Sincronização automática entre múltiplos dispositivos a cada 4 segundos.
+- Dashboard consolidado com métricas de faturamento e lucro.
+- Relatórios exportáveis e controle de permissões.
 
-## Como rodar localmente
-1. Instale as dependências: `npm install`
-2. Inicie o servidor: `npm run dev`
-3. Abra `http://localhost:3000`
-
-## Deploy na Vercel
-1. Faça o push para o GitHub.
-2. Conecte seu repositório na Vercel.
-3. Clique em **Deploy**.
-4. O sistema está pronto para produção!
-
----
-**Desenvolvido por João Layón**
+## Créditos
+- **Desenvolvedor:** João Layón.
+- **Infraestrutura:** Public Object Cloud Storage.
+- **Versão:** 3.0 (Sync Master Edition).
