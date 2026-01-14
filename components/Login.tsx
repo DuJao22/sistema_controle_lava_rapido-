@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, Globe } from 'lucide-react';
+import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, Globe, WifiOff } from 'lucide-react';
 import { login, initDB } from '../lib/storage';
 
 interface LoginProps {
@@ -22,16 +22,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      // Força a conexão com a nuvem antes de validar o usuário
-      // Fix: removed unused argument from initDB call to match definition in storage.ts
       const ready = await initDB();
       if (!ready) {
-        setError('Não foi possível conectar ao servidor. Verifique sua internet.');
+        setError('Falha na conexão com SQLite Cloud. Verifique API_KEY e String de Conexão.');
         setLoading(false);
         return;
       }
 
-      // FIX: Await the login promise to get the user object
       const user = await login(username, password);
       
       if (user) {
@@ -42,8 +39,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       } else {
         setError('Usuário ou senha incorretos.');
       }
-    } catch (err) {
-      setError('Erro ao processar login na rede.');
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Erro de rede ao conectar ao SQLite Cloud.');
     } finally {
       setLoading(false);
     }
@@ -58,15 +56,15 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
           <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
           <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-            <Globe size={14} /> Sistema de Nuvem Ativa
+            <Globe size={14} /> SQLite Cloud Sync Ativo
           </p>
         </div>
 
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl space-y-8 relative overflow-hidden">
           {error && (
-            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-bounce">
+            <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-shake">
               <AlertCircle size={18} />
-              {error}
+              <span className="flex-1">{error}</span>
             </div>
           )}
 
@@ -110,13 +108,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               className="w-full bg-slate-900 text-white py-6 rounded-2xl font-black text-xs tracking-[0.3em] hover:bg-blue-600 shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-              AUTENTICAR NA REDE
+              AUTENTICAR NO CLOUD
             </button>
           </form>
         </div>
         
         <p className="text-center text-[9px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Infraestrutura Master Compartilhada • v2.0
+          Infraestrutura SQLite Cloud • v5.0
         </p>
       </div>
     </div>
