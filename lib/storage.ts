@@ -4,10 +4,10 @@ import { Billing, Expense, User } from '../types';
 /**
  * CONFIGURAÇÃO GLOBAL SQLITE CLOUD
  * Cluster: cbw4nq6vvk.g5.sqlite.cloud
- * Database: database.db
+ * Database: lava_jato.db
  * API Key: CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc
  */
-const CONNECTION_STRING = 'sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/database.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc';
+const CONNECTION_STRING = 'sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/lava_jato.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc';
 
 const getCloudConfig = () => {
   try {
@@ -16,7 +16,8 @@ const getCloudConfig = () => {
     const host = url.hostname;
     const apiKey = url.searchParams.get('apikey') || '';
     
-    let dbName = url.pathname.replace(/^\//, '') || 'database.db';
+    // Extrai o nome do banco (lava_jato.db)
+    let dbName = url.pathname.replace(/^\//, '') || 'lava_jato.db';
     if (dbName.includes('?')) dbName = dbName.split('?')[0];
     
     return {
@@ -32,11 +33,11 @@ const getCloudConfig = () => {
 
 const cloud = getCloudConfig();
 
-// Cache para o padrão de endpoint que funcionar (evita retries 404 constantes)
-let workingPattern: 'BODY_DB' | 'PATH_DB' | 'FALLBACK' | null = null;
+// Cache para o padrão de endpoint que funcionar na sessão atual
+let workingPattern: string | null = null;
 
 /**
- * Persistência Local
+ * Persistência Local (Fallback)
  */
 const getLocal = (key: string) => {
   try {
@@ -51,79 +52,68 @@ const setLocal = (key: string, data: any) => {
 };
 
 /**
- * Executor de Comandos SQL com Auto-Discovery de Endpoint
+ * Executor de Comandos SQL com Auto-Discovery de Endpoint (Corrige 404)
  */
 async function execSql(sql: string): Promise<any> {
   if (!cloud || !cloud.apiKey) return null;
 
-  const tryRequest = async (pattern: 'BODY_DB' | 'PATH_DB' | 'FALLBACK') => {
-    let url = `${cloud.baseUrl}/sql`;
-    let body: any = { command: sql };
+  // Lista de tentativas para descobrir como este cluster específico responde
+  const patterns = [
+    // 1. Padrão Body: Database no JSON (Recomendado)
+    { id: 'BODY_EXT', url: `${cloud.baseUrl}/sql`, body: { database: cloud.dbName, command: sql } },
+    // 2. Padrão Body sem extensão (Alguns clusters preferem assim)
+    { id: 'BODY_NO_EXT', url: `${cloud.baseUrl}/sql`, body: { database: cloud.dbName.replace('.db', ''), command: sql } },
+    // 3. Padrão Path: Database na URL
+    { id: 'PATH_EXT', url: `${cloud.baseUrl}/${encodeURIComponent(cloud.dbName)}/sql`, body: { command: sql } },
+    // 4. Fallback para banco 'main' se o banco customizado ainda não existir
+    { id: 'FALLBACK_MAIN', url: `${cloud.baseUrl}/sql`, body: { database: 'main', command: sql } }
+  ];
 
-    if (pattern === 'BODY_DB') {
-      body.database = cloud.dbName;
-    } else if (pattern === 'PATH_DB') {
-      url = `${cloud.baseUrl}/${encodeURIComponent(cloud.dbName)}`;
-    } else if (pattern === 'FALLBACK') {
-      body.database = 'main';
+  const performFetch = async (p: typeof patterns[0]) => {
+    try {
+      const response = await fetch(p.url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cloud.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(p.body),
+        mode: 'cors'
+      });
+
+      if (!response.ok) {
+        return { ok: false, status: response.status };
+      }
+
+      const result = await response.json();
+      return { ok: true, data: result };
+    } catch (e) {
+      return { ok: false, status: 0 };
     }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cloud.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body),
-      mode: 'cors'
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return { ok: false, status: response.status, message: errorData.message };
-    }
-
-    const result = await response.json();
-    return { ok: true, data: result };
   };
 
-  // 1. Se já sabemos o que funciona, usamos direto
+  // Se já temos um padrão que funcionou antes, usamos ele primeiro
   if (workingPattern) {
-    const res = await tryRequest(workingPattern);
-    if (res.ok) return normalizeResponse(res.data);
-    // Se parou de funcionar (ex: token expirou ou db deletado), limpa o cache e tenta discovery
-    workingPattern = null;
-  }
-
-  // 2. Discovery: Tenta padrões em sequência
-  console.log("Iniciando auto-discovery de endpoint SQLite Cloud...");
-  
-  // Tenta Padrão A: Database no Body (O mais comum em clusters v2)
-  let attempt = await tryRequest('BODY_DB');
-  if (attempt.ok) {
-    workingPattern = 'BODY_DB';
-    return normalizeResponse(attempt.data);
-  }
-
-  // Tenta Padrão B: Database na URL (Padrão resource-based)
-  if (attempt.status === 404) {
-    attempt = await tryRequest('PATH_DB');
-    if (attempt.ok) {
-      workingPattern = 'PATH_DB';
-      return normalizeResponse(attempt.data);
+    const p = patterns.find(x => x.id === workingPattern);
+    if (p) {
+      const res = await performFetch(p);
+      if (res.ok) return normalizeResponse(res.data);
     }
+    workingPattern = null; // Se falhou o que funcionava, reinicia discovery
   }
 
-  // Tenta Padrão C: Fallback para 'main'
-  if (attempt.status === 404) {
-    attempt = await tryRequest('FALLBACK');
-    if (attempt.ok) {
-      workingPattern = 'FALLBACK';
-      return normalizeResponse(attempt.data);
+  // Tenta cada padrão até encontrar um que não retorne 404/Erro
+  for (const p of patterns) {
+    const res = await performFetch(p);
+    if (res.ok) {
+      workingPattern = p.id;
+      return normalizeResponse(res.data);
     }
+    // Se for erro de autorização (401), não adianta tentar outros padrões
+    if (res.status === 401) throw new Error("Chave de API inválida ou cluster não autorizado.");
   }
 
-  throw new Error(attempt.message || `Falha na requisição (Erro ${attempt.status})`);
+  throw new Error("Falha na conexão (404). O banco 'lava_jato.db' não foi encontrado no cluster.");
 }
 
 function normalizeResponse(result: any) {
@@ -140,13 +130,20 @@ const s = (val: any) => typeof val === 'string' ? `'${val.replace(/'/g, "''")}'`
 export const initDB = async (): Promise<boolean> => {
   if (!cloud) return false;
   try {
+    // Ping inicial para validar conexão e descobrir endpoint
+    await execSql("SELECT 1");
+    
+    // Criação das tabelas se não existirem
     await execSql(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT)`);
     await execSql(`CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT)`);
     await execSql(`CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT)`);
+    
+    // Usuário Master
     await execSql(`INSERT OR IGNORE INTO users (id, username, password, name, role) VALUES ('admin-master-id', 'dujao22', '30031936Vo.', 'Dujao Master', 'admin')`);
+    
     return true;
-  } catch (e) {
-    console.error("Erro Crítico na Inicialização Cloud:", e);
+  } catch (e: any) {
+    console.error("Erro na inicialização Cloud:", e.message);
     return false;
   }
 };
