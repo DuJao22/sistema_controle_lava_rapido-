@@ -25,9 +25,10 @@ export const UserManagement: React.FC = () => {
     setTimeout(() => setNotification(null), 6000);
   };
 
-  const load = () => {
+  // FIX: Make load function async to handle the promise returned by getUsers
+  const load = async () => {
     try {
-      const data = getUsers();
+      const data = await getUsers();
       setUsers(data);
     } catch (e) {
       showNotify("Erro ao carregar equipe", "error");
@@ -38,7 +39,8 @@ export const UserManagement: React.FC = () => {
 
   const handleRepair = async () => {
     setIsSyncing(true);
-    await initDB(true);
+    // Fix: removed unused argument from initDB call to match definition in storage.ts
+    await initDB();
     load();
     setIsSyncing(false);
     showNotify("Sistema sincronizado e reparado!");

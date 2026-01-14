@@ -15,17 +15,18 @@ export const ExpenseForm: React.FC = () => {
     date: new Date().toISOString().split('T')[0]
   });
 
-  const load = () => setExpenses(getExpenses());
+  // FIX: Make load function async to handle the promise returned by getExpenses
+  const load = async () => setExpenses(await getExpenses());
 
   useEffect(() => {
     load();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const userName = localStorage.getItem('lavarapido_user_name') || 'Sistema';
     
-    saveExpense({ 
+    await saveExpense({ 
       ...formData, 
       id: editingId || '',
       createdBy: userName
@@ -47,9 +48,9 @@ export const ExpenseForm: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Deseja excluir esta despesa?')) {
-      deleteExpense(id);
+      await deleteExpense(id);
       load();
     }
   };
@@ -126,7 +127,7 @@ export const ExpenseForm: React.FC = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-md overflow-hidden animate-in zoom-in duration-300">
             <div className="flex justify-between items-center p-8 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter flex items-center gap-2">
                 <Wallet className="text-rose-500" size={24} />

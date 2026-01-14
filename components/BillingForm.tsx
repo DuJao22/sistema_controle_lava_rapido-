@@ -25,8 +25,9 @@ export const BillingForm: React.FC = () => {
     time: getCurrentTime()
   });
 
-  const load = () => {
-    const data = getBillings();
+  // FIX: Make load function async to handle the promise returned by getBillings
+  const load = async () => {
+    const data = await getBillings();
     setBillings(data);
   };
 

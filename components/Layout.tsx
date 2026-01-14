@@ -29,7 +29,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   const handleGlobalSync = async () => {
     setIsGlobalSyncing(true);
     // Força o download da versão mais recente da rede
-    const success = await initDB(true); 
+    // Fix: removed unused argument from initDB call to match definition in storage.ts
+    const success = await initDB(); 
     if (success) {
       window.location.reload(); 
     } else {

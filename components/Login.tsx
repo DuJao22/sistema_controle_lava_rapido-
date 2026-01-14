@@ -23,14 +23,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     try {
       // Força a conexão com a nuvem antes de validar o usuário
-      const ready = await initDB(true);
+      // Fix: removed unused argument from initDB call to match definition in storage.ts
+      const ready = await initDB();
       if (!ready) {
         setError('Não foi possível conectar ao servidor. Verifique sua internet.');
         setLoading(false);
         return;
       }
 
-      const user = login(username, password);
+      // FIX: Await the login promise to get the user object
+      const user = await login(username, password);
       
       if (user) {
         localStorage.setItem('lavarapido_user_id', user.id);

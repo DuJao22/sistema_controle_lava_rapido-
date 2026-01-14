@@ -4,43 +4,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lava Rápido Pro - Gestão Inteligente</title>
+    <title>Lava Rápido Pro - Gestão Cloud</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     
-    <!-- SQL.js (SQLite WebAssembly) - Usando unpkg para maior confiabilidade -->
-    <script src="https://unpkg.com/sql.js@1.10.3/dist/sql-wasm.js"></script>
-
     <style>
       body {
         font-family: 'Inter', sans-serif;
         background-color: #f8fafc;
         margin: 0;
+        overflow-x: hidden;
       }
       #root:empty {
         display: flex;
         align-items: center;
         justify-content: center;
         height: 100vh;
-        background: #f8fafc;
+        background: #0f172a;
       }
       #root:empty::after {
-        content: "Inicializando SQLite3...";
-        font-weight: 600;
+        content: "CARREGANDO SISTEMA CLOUD...";
+        font-weight: 900;
+        font-style: italic;
         color: #3b82f6;
+        letter-spacing: 0.2em;
         animation: pulse 2s infinite;
       }
       @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: .5; }
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: .5; transform: scale(0.98); }
       }
       
       @media print {
-        aside, footer, .print-hidden, button {
+        aside, footer, .print-hidden, button, .cloud-status {
           display: none !important;
         }
         main {
@@ -51,7 +51,10 @@
     </style>
 
     <script>
-      window.process = { env: { NODE_ENV: 'production' } };
+      // Garante que o objeto process exista sem sobrescrever variáveis injetadas
+      window.process = window.process || { env: {} };
+      window.process.env = window.process.env || {};
+      if (!window.process.env.NODE_ENV) window.process.env.NODE_ENV = 'production';
     </script>
 
     <script type="importmap">
