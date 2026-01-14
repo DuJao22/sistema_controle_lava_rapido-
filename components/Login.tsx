@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, Globe, WifiOff } from 'lucide-react';
-import { login, initDB } from '../lib/storage';
+import { Car, User as UserIcon, LogIn, Loader2, AlertCircle, Lock, Eye, EyeOff, Globe, Database, ShieldAlert } from 'lucide-react';
+import { login, initDB, isCloudActive } from '../lib/storage';
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
@@ -13,6 +13,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const cloudActive = isCloudActive();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,12 +23,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      const ready = await initDB();
-      if (!ready) {
-        setError('Falha na conexão com SQLite Cloud. Verifique API_KEY e String de Conexão.');
-        setLoading(false);
-        return;
-      }
+      // Garante que o banco está pronto antes de tentar logar
+      await initDB();
 
       const user = await login(username, password);
       
@@ -37,11 +34,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         localStorage.setItem('lavarapido_user_role', user.role);
         onLoginSuccess(user);
       } else {
-        setError('Usuário ou senha incorretos.');
+        setError('Credenciais incorretas. Verifique o usuário master ou colaborador.');
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Erro de rede ao conectar ao SQLite Cloud.');
+      setError(err.message || 'Falha na conexão com o banco de dados.');
     } finally {
       setLoading(false);
     }
@@ -55,12 +52,25 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <Car size={48} className="text-white" />
           </div>
           <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">Lava Rápido Pro</h1>
-          <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-            <Globe size={14} /> SQLite Cloud Sync Ativo
-          </p>
+          <div className="flex items-center justify-center gap-4">
+            <p className={`text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 ${cloudActive ? 'text-emerald-400' : 'text-amber-500'}`}>
+              {cloudActive ? <Globe size={14} /> : <Database size={14} />}
+              {cloudActive ? 'Acesso Cloud Habilitado' : 'Modo Offline Ativado'}
+            </p>
+          </div>
         </div>
 
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl space-y-8 relative overflow-hidden">
+          {!cloudActive && (
+            <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-start gap-3 text-amber-700">
+              <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase">Aviso de Rede</p>
+                <p className="text-[9px] font-bold leading-relaxed opacity-80 uppercase">Não detectamos conexão com o SQLite Cloud. Utilizando base local.</p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-600 text-[10px] font-black uppercase animate-shake">
               <AlertCircle size={18} />
@@ -75,7 +85,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <input
                   required
                   type="text"
-                  placeholder="Usuário"
+                  placeholder="Usuário (ex: dujao22)"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-14 pr-6 py-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
@@ -87,7 +97,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <input
                   required
                   type={showPassword ? "text" : "password"}
-                  placeholder="Senha"
+                  placeholder="Senha Master"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-14 pr-14 py-5 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-slate-900 transition-all placeholder:text-slate-400"
@@ -108,13 +118,13 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               className="w-full bg-slate-900 text-white py-6 rounded-2xl font-black text-xs tracking-[0.3em] hover:bg-blue-600 shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-              AUTENTICAR NO CLOUD
+              {cloudActive ? 'LOGAR NO SISTEMA' : 'ACESSAR LOCAL'}
             </button>
           </form>
         </div>
         
         <p className="text-center text-[9px] text-slate-500 font-bold uppercase tracking-widest opacity-60">
-          Infraestrutura SQLite Cloud • v5.0
+          Infraestrutura SQLite Cloud • v5.2 Master Ready
         </p>
       </div>
     </div>
