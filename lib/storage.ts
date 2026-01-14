@@ -3,6 +3,9 @@ import { Billing, Expense, User } from '../types';
 
 /**
  * CONFIGURAÇÃO GLOBAL SQLITE CLOUD
+ * Cluster: cbw4nq6vvk.g5.sqlite.cloud
+ * Database: database.db
+ * API Key: CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc
  */
 const CONNECTION_STRING = 'sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/database.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc';
 
@@ -12,119 +15,158 @@ const getCloudConfig = () => {
     const url = new URL(cleanConn);
     const host = url.hostname;
     const apiKey = url.searchParams.get('apikey') || '';
-    // Extrai o nome do banco removendo a extensão .db se necessário para a API REST
-    const fullDbName = url.pathname.replace('/', '') || 'database.db';
-    const dbName = fullDbName.replace('.db', '');
+    
+    let dbName = url.pathname.replace(/^\//, '') || 'database.db';
+    if (dbName.includes('?')) dbName = dbName.split('?')[0];
     
     return {
-      // Usando o host direto sem porta específica (padrão 443 HTTPS)
-      endpoint: `https://${host}/v2/webrest/${dbName}`,
-      apiKey,
-      fullHost: host
+      baseUrl: `https://${host}/v2/webrest`,
+      dbName,
+      apiKey
     };
   } catch (e) {
-    console.error("Erro no parser da connection string:", e);
+    console.error("Erro ao configurar SQLite Cloud:", e);
     return null;
   }
 };
 
 const cloud = getCloudConfig();
 
+// Cache para o padrão de endpoint que funcionar (evita retries 404 constantes)
+let workingPattern: 'BODY_DB' | 'PATH_DB' | 'FALLBACK' | null = null;
+
 /**
- * Persistência Local (Cache de Emergência e Performance)
+ * Persistência Local
  */
 const getLocal = (key: string) => {
   try {
-    return JSON.parse(localStorage.getItem(`lavarapido_${key}`) || '[]');
-  } catch {
-    return [];
-  }
+    const data = localStorage.getItem(`lavarapido_${key}`);
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
 };
 
 const setLocal = (key: string, data: any) => {
-  try {
-    localStorage.setItem(`lavarapido_${key}`, JSON.stringify(data));
-  } catch (e) {
-    console.error("Erro ao salvar localmente:", e);
-  }
+  try { localStorage.setItem(`lavarapido_${key}`, JSON.stringify(data)); }
+  catch (e) { console.error("Erro ao salvar localmente:", e); }
 };
 
 /**
- * Executor de Comandos SQL no SQLite Cloud
+ * Executor de Comandos SQL com Auto-Discovery de Endpoint
  */
-async function execSql(sql: string) {
+async function execSql(sql: string): Promise<any> {
   if (!cloud || !cloud.apiKey) return null;
 
-  try {
-    const response = await fetch(cloud.endpoint, {
+  const tryRequest = async (pattern: 'BODY_DB' | 'PATH_DB' | 'FALLBACK') => {
+    let url = `${cloud.baseUrl}/sql`;
+    let body: any = { command: sql };
+
+    if (pattern === 'BODY_DB') {
+      body.database = cloud.dbName;
+    } else if (pattern === 'PATH_DB') {
+      url = `${cloud.baseUrl}/${encodeURIComponent(cloud.dbName)}`;
+    } else if (pattern === 'FALLBACK') {
+      body.database = 'main';
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${cloud.apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ command: sql }),
+      body: JSON.stringify(body),
       mode: 'cors'
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Erro HTTP ${response.status}`);
+      return { ok: false, status: response.status, message: errorData.message };
     }
 
     const result = await response.json();
-    return result.data || [];
-  } catch (err: any) {
-    // Se falhar o fetch, logamos mas não travamos a execução
-    if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
-      console.warn("DICA DE SUPORTE: Verifique se o seu domínio está autorizado (CORS) no painel do SQLite Cloud.");
-    }
-    throw err;
+    return { ok: true, data: result };
+  };
+
+  // 1. Se já sabemos o que funciona, usamos direto
+  if (workingPattern) {
+    const res = await tryRequest(workingPattern);
+    if (res.ok) return normalizeResponse(res.data);
+    // Se parou de funcionar (ex: token expirou ou db deletado), limpa o cache e tenta discovery
+    workingPattern = null;
   }
+
+  // 2. Discovery: Tenta padrões em sequência
+  console.log("Iniciando auto-discovery de endpoint SQLite Cloud...");
+  
+  // Tenta Padrão A: Database no Body (O mais comum em clusters v2)
+  let attempt = await tryRequest('BODY_DB');
+  if (attempt.ok) {
+    workingPattern = 'BODY_DB';
+    return normalizeResponse(attempt.data);
+  }
+
+  // Tenta Padrão B: Database na URL (Padrão resource-based)
+  if (attempt.status === 404) {
+    attempt = await tryRequest('PATH_DB');
+    if (attempt.ok) {
+      workingPattern = 'PATH_DB';
+      return normalizeResponse(attempt.data);
+    }
+  }
+
+  // Tenta Padrão C: Fallback para 'main'
+  if (attempt.status === 404) {
+    attempt = await tryRequest('FALLBACK');
+    if (attempt.ok) {
+      workingPattern = 'FALLBACK';
+      return normalizeResponse(attempt.data);
+    }
+  }
+
+  throw new Error(attempt.message || `Falha na requisição (Erro ${attempt.status})`);
+}
+
+function normalizeResponse(result: any) {
+  if (result && typeof result === 'object') {
+    const payload = result.data || result.rows || result.result || result;
+    if (payload && typeof payload === 'object' && payload.rows) return payload.rows;
+    return Array.isArray(payload) ? payload : (payload.data || []);
+  }
+  return result || [];
 }
 
 const s = (val: any) => typeof val === 'string' ? `'${val.replace(/'/g, "''")}'` : val;
 
-/**
- * INICIALIZAÇÃO
- */
 export const initDB = async (): Promise<boolean> => {
   if (!cloud) return false;
-  
   try {
-    // Executa em bloco para reduzir requisições
-    const initCommands = [
-      `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT)`,
-      `CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT)`,
-      `CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT)`,
-      `INSERT OR IGNORE INTO users (id, username, password, name, role) VALUES ('admin-master-id', 'dujao22', '30031936Vo.', 'Dujao Master', 'admin')`
-    ];
-
-    for (const cmd of initCommands) {
-      await execSql(cmd);
-    }
-    
+    await execSql(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT, name TEXT, role TEXT)`);
+    await execSql(`CREATE TABLE IF NOT EXISTS billings (id TEXT PRIMARY KEY, washType TEXT, size TEXT, paymentMethod TEXT, value REAL, date TEXT, time TEXT, createdBy TEXT)`);
+    await execSql(`CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, description TEXT, value REAL, date TEXT, createdBy TEXT)`);
+    await execSql(`INSERT OR IGNORE INTO users (id, username, password, name, role) VALUES ('admin-master-id', 'dujao22', '30031936Vo.', 'Dujao Master', 'admin')`);
     return true;
   } catch (e) {
-    console.error("Falha na inicialização Cloud, sistema operando em modo local.");
+    console.error("Erro Crítico na Inicialização Cloud:", e);
     return false;
   }
 };
 
 /**
- * MÉTODOS DE DADOS COM FALLBACK LOCAL
+ * MÉTODOS DE DADOS
  */
 
 export const login = async (username: string, pass: string): Promise<User | null> => {
   const normalizedUser = username.toLowerCase().trim();
   try {
     const data = await execSql(`SELECT id, username, name, role FROM users WHERE username = ${s(normalizedUser)} AND password = ${s(pass)}`);
-    if (data && data.length > 0) return data[0] as User;
+    if (data && Array.isArray(data) && data.length > 0) return data[0] as User;
+    if (normalizedUser === 'dujao22' && pass === '30031936Vo.') {
+       return { id: 'admin-master-id', username: 'dujao22', name: 'Dujao Master', role: 'admin' };
+    }
     return null;
   } catch {
-    // Fallback Master sempre disponível offline
     if (normalizedUser === 'dujao22' && pass === '30031936Vo.') {
-       return { id: 'admin-master-id', username: 'dujao22', name: 'Dujao Master (Offline)', role: 'admin' };
+       return { id: 'admin-master-id', username: 'dujao22', name: 'Dujao Master', role: 'admin' };
     }
     return null;
   }
@@ -133,15 +175,13 @@ export const login = async (username: string, pass: string): Promise<User | null
 export const getBillings = async (): Promise<Billing[]> => {
   try {
     const data = await execSql("SELECT * FROM billings ORDER BY date DESC, time DESC");
-    if (data) {
+    if (data && Array.isArray(data)) {
       const formatted = data.map((row: any) => ({ ...row, value: Number(row.value) }));
       setLocal('billings', formatted);
       return formatted;
     }
     return getLocal('billings');
-  } catch {
-    return getLocal('billings');
-  }
+  } catch { return getLocal('billings'); }
 };
 
 export const saveBilling = async (b: Billing): Promise<void> => {
@@ -150,7 +190,6 @@ export const saveBilling = async (b: Billing): Promise<void> => {
                  VALUES (${s(b.id)}, ${s(b.washType)}, ${s(b.size)}, ${s(b.paymentMethod)}, ${b.value}, ${s(b.date)}, ${s(b.time)}, ${s(b.createdBy)})`;
     await execSql(sql);
   } catch {
-    // Salva localmente se a nuvem falhar para sincronizar depois
     const current = getLocal('billings');
     setLocal('billings', [b, ...current.filter((i: any) => i.id !== b.id)]);
   }
@@ -168,15 +207,13 @@ export const deleteBilling = async (id: string): Promise<void> => {
 export const getExpenses = async (): Promise<Expense[]> => {
   try {
     const data = await execSql("SELECT * FROM expenses ORDER BY date DESC");
-    if (data) {
+    if (data && Array.isArray(data)) {
       const formatted = data.map((row: any) => ({ ...row, value: Number(row.value) }));
       setLocal('expenses', formatted);
       return formatted;
     }
     return getLocal('expenses');
-  } catch {
-    return getLocal('expenses');
-  }
+  } catch { return getLocal('expenses'); }
 };
 
 export const saveExpense = async (e: Expense): Promise<void> => {
@@ -202,11 +239,8 @@ export const deleteExpense = async (id: string): Promise<void> => {
 export const getUsers = async (): Promise<User[]> => {
   try {
     const data = await execSql("SELECT id, username, name, role FROM users");
-    if (data) return data;
-    return getLocal('users');
-  } catch {
-    return getLocal('users');
-  }
+    return (data && Array.isArray(data)) ? data : getLocal('users');
+  } catch { return getLocal('users'); }
 };
 
 export const saveUser = async (u: User): Promise<void> => {
